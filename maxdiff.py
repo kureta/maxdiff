@@ -33,15 +33,41 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
         if not os.path.exists(filepath):
             return None
 
+        # Check extension to decide how to parse
+        # In git mode, self.server.file_path has the logical filename (e.g. "patch.amxd")
+        # In standalone mode, filepath has the extension.
+        is_amxd = filepath.lower().endswith(".amxd") or self.server.file_path.lower().endswith(".amxd")
+
+        if is_amxd:
+            try:
+                with open(filepath, "rb") as f:
+                    content = f.read()
+                
+                # AMXD files are binary with embedded JSON.
+                # We look for the JSON object bounded by { and }.
+                # We prioritize finding "ptch" marker which usually precedes the JSON in AMXD.
+                start_idx = content.find(b'{')
+                ptch_idx = content.find(b'ptch')
+                
+                if ptch_idx != -1:
+                    # If ptch is found, look for { after it
+                    possible_start = content.find(b'{', ptch_idx)
+                    if possible_start != -1:
+                        start_idx = possible_start
+                
+                end_idx = content.rfind(b'}')
+                
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    json_bytes = content[start_idx : end_idx + 1]
+                    return json.loads(json_bytes.decode("utf-8"))
+            except Exception:
+                # If binary parsing fails, fall through to try standard text load
+                pass
+
         try:
             with open(filepath, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if not content:
-                    return None
-                return json.loads(content)
-        except (OSError, json.JSONDecodeError):
-            # If we can't read it as JSON, treat as empty/None
-            # This handles binary files or non-JSON files gracefully
+                return json.load(f)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return None
 
     def do_GET(self) -> None:
@@ -59,8 +85,6 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(data).encode("utf-8"))
             except Exception as e:
                 # Fallback error handling
-                # We can't use send_error here easily if headers are already sent
-                # but we can try to write an error json if possible
                 pass
         else:
             super().do_GET()
