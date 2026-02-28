@@ -1,11 +1,12 @@
 const container = document.getElementById("patcher-container");
 const svgLayer = document.getElementById("patchline-svg");
-
-const fileInputA = document.getElementById("fileInputA");
-const fileInputB = document.getElementById("fileInputB");
+const fileInputsDiv = document.getElementById("file-inputs");
+const viewToggles = document.getElementById("view-toggles");
+const svgNS = "http://www.w3.org/2000/svg";
 
 let dataA = null;
 let dataB = null;
+let currentDiffData = null;
 
 const btnBack = document.createElement("button");
 btnBack.id = "btn-back";
@@ -15,7 +16,7 @@ document.getElementById("controls").appendChild(btnBack);
 
 const navStack = [];
 
- window.addEventListener("pagehide", () => {
+window.addEventListener("pagehide", () => {
     navigator.sendBeacon("/shutdown");
 });
 
@@ -39,19 +40,28 @@ function navigateToSubpatch(pA, pB) {
     updateView(document.querySelector("input[name=\"view\"]:checked").value);
 }
 
-
-const viewToggles = document.getElementById("view-toggles");
-let currentDiffData = null;
-
 document.querySelectorAll('input[name="view"]').forEach(radio => {
     radio.addEventListener("change", (e) => updateView(e.target.value));
 });
 
+function normalizePatchData(data) {
+    if (!data || !data.patcher) return { boxes: [], lines: [] };
+    return {
+        boxes: (data.patcher.boxes || []).map(item => item.box),
+        lines: (data.patcher.lines || []).map(item => item.patchline)
+    };
+}
 
 function updateView(mode) {
-    if (mode === "before") renderPatch(dataA);
-    else if (mode === "after") renderPatch(dataB);
-    else if (mode === "diff" && currentDiffData) renderDiff(currentDiffData);
+    if (mode === "before") {
+        const { boxes, lines } = normalizePatchData(dataA);
+        render(boxes, lines, false);
+    } else if (mode === "after") {
+        const { boxes, lines } = normalizePatchData(dataB);
+        render(boxes, lines, false);
+    } else if (mode === "diff" && currentDiffData) {
+        render(currentDiffData.boxes, currentDiffData.lines, true);
+    }
 }
 
 function handleDataUpdate() {
@@ -63,14 +73,14 @@ function handleDataUpdate() {
     }
 }
 
-fileInputA.addEventListener("change", (e) => {
+document.getElementById("fileInputA").addEventListener("change", (e) => {
     handleFile(e, (data) => {
         dataA = data;
         handleDataUpdate();
     });
 });
 
-fileInputB.addEventListener("change", (e) => {
+document.getElementById("fileInputB").addEventListener("change", (e) => {
     handleFile(e, (data) => {
         dataB = data;
         handleDataUpdate();
@@ -82,9 +92,12 @@ async function checkLocalServer() {
         const response = await fetch("/diff-data");
         if (response.ok) {
             const data = await response.json();
-            fileInputA.parentElement.style.display = "none";
-            fileInputB.parentElement.style.display = "none";
+            fileInputsDiv.style.display = "none";
             
+            if (data.filename) {
+                document.title = `Diff: ${data.filename}`;
+            }
+
             dataA = data.old;
             dataB = data.new;
             handleDataUpdate();
@@ -94,7 +107,6 @@ async function checkLocalServer() {
     }
 }
 
-
 function handleFile(event, callback) {
     const file = event.target.files[0];
     if (!file) return;
@@ -103,18 +115,14 @@ function handleFile(event, callback) {
     reader.readAsText(file);
 }
 
-
-
 checkLocalServer();
 
 function comparePatches(dataA, dataB) {
-    const boxesA = dataA?.patcher?.boxes || [];
-    const boxesB = dataB?.patcher?.boxes || [];
-    const linesA = dataA?.patcher?.lines || [];
-    const linesB = dataB?.patcher?.lines || [];
+    const { boxes: boxesA, lines: linesA } = normalizePatchData(dataA);
+    const { boxes: boxesB, lines: linesB } = normalizePatchData(dataB);
 
-    const dictA = new Map(boxesA.map(item => [item.box.id, item.box]));
-    const dictB = new Map(boxesB.map(item => [item.box.id, item.box]));
+    const dictA = new Map(boxesA.map(b => [b.id, b]));
+    const dictB = new Map(boxesB.map(b => [b.id, b]));
 
     const diffBoxes = [];
     const diffLines = [];
@@ -152,8 +160,8 @@ function comparePatches(dataA, dataB) {
     }
 
     const getLineSig = (l) => `${l.source.join(",")}-${l.destination.join(",")}`;
-    const linesDictA = new Map(linesA.map(item => [getLineSig(item.patchline), item.patchline]));
-    const linesDictB = new Map(linesB.map(item => [getLineSig(item.patchline), item.patchline]));
+    const linesDictA = new Map(linesA.map(l => [getLineSig(l), l]));
+    const linesDictB = new Map(linesB.map(l => [getLineSig(l), l]));
 
     for (const [sig, lineA] of linesDictA.entries()) {
         if (!linesDictB.has(sig)) {
@@ -172,7 +180,7 @@ function comparePatches(dataA, dataB) {
     return { boxes: diffBoxes, lines: diffLines };
 }
 
-function renderDiff(diffData) {
+function render(boxes, lines, isDiff) {
     container.querySelectorAll(".max-box").forEach(el => el.remove());
     svgLayer.innerHTML = "";
 
@@ -180,142 +188,68 @@ function renderDiff(diffData) {
     let maxX = 0;
     let maxY = 0;
 
-    diffData.boxes.forEach(b => {
+    boxes.forEach(b => {
         boxDict.set(b.id, b);
-
         const [x, y, w, h] = b.patching_rect;
         maxX = Math.max(maxX, x + w);
         maxY = Math.max(maxY, y + h);
 
         const el = document.createElement("div");
-        el.className = `max-box ${b.diffState}`;
+        el.className = `max-box ${isDiff ? (b.diffState || "") : ""}`;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         el.style.width = `${w}px`;
         el.style.height = `${h}px`;
         el.textContent = b.text || b.maxclass;
-        
-        if (b.patcherA || b.patcherB) {
+
+        const hasSubpatch = isDiff ? (b.patcherA || b.patcherB) : b.patcher;
+        if (hasSubpatch) {
             el.style.borderStyle = "double";
             el.style.borderWidth = "3px";
             el.style.cursor = "pointer";
-            el.addEventListener("dblclick", () => navigateToSubpatch(b.patcherA, b.patcherB));
+            el.addEventListener("dblclick", () => {
+                if (isDiff) navigateToSubpatch(b.patcherA, b.patcherB);
+                else navigateToSubpatch(b.patcher, b.patcher);
+            });
         }
-        
         container.appendChild(el);
     });
 
     container.style.width = `${maxX + 200}px`;
     container.style.height = `${maxY + 200}px`;
 
-    const svgNS = "http://www.w3.org/2000/svg";
-    
-    diffData.lines.forEach(l => {
+    lines.forEach(l => {
         const src = boxDict.get(l.source[0]);
         const dst = boxDict.get(l.destination[0]);
 
         if (src && dst) {
-            const [sx, sy, sw, sh] = src.patching_rect;
-            const [dx, dy, dw, dh] = dst.patching_rect;
-
-            const srcOutlets = src.numoutlets || 1;
-            const dstInlets = dst.numinlets || 1;
-            const srcOutletIndex = l.source[1];
-            const dstInletIndex = l.destination[1];
-
-            const startX = sx + (sw / (srcOutlets + 1)) * (srcOutletIndex + 1);
-            const startY = sy + sh;
-            const endX = dx + (dw / (dstInlets + 1)) * (dstInletIndex + 1);
-            const endY = dy;
-
-            const path = document.createElementNS(svgNS, "path");
-            path.setAttribute("class", `patchline ${l.diffState}`);
-            
-            const ctrlY1 = startY + Math.max(20, Math.abs(endY - startY) * 0.4);
-            const ctrlY2 = endY - Math.max(20, Math.abs(endY - startY) * 0.4);
-            
-            path.setAttribute("d", `M ${startX} ${startY} C ${startX} ${ctrlY1}, ${endX} ${ctrlY2}, ${endX} ${endY}`);
+            const path = createConnectionPath(src, dst, l);
+            if (isDiff && l.diffState) path.classList.add(l.diffState);
             svgLayer.appendChild(path);
         }
     });
 }
 
-function renderPatch(data) {
-    container.querySelectorAll(".max-box").forEach(el => el.remove());
-    svgLayer.innerHTML = "";
+function createConnectionPath(src, dst, line) {
+    const [sx, sy, sw, sh] = src.patching_rect;
+    const [dx, dy, dw, dh] = dst.patching_rect;
 
-    if (!data || !data.patcher) return;
+    const srcOutlets = src.numoutlets || 1;
+    const dstInlets = dst.numinlets || 1;
+    const srcOutletIndex = line.source[1];
+    const dstInletIndex = line.destination[1];
 
-    const boxes = data.patcher.boxes || [];
-    const lines = data.patcher.lines || [];
-    const boxDict = new Map();
+    const startX = sx + (sw / (srcOutlets + 1)) * (srcOutletIndex + 1);
+    const startY = sy + sh;
+    const endX = dx + (dw / (dstInlets + 1)) * (dstInletIndex + 1);
+    const endY = dy;
 
-    let maxX = 0;
-    let maxY = 0;
+    const path = document.createElementNS(svgNS, "path");
+    path.setAttribute("class", "patchline");
 
-    boxes.forEach(item => {
-        const b = item.box;
-        if (!b) return;
-        
-        boxDict.set(b.id, b);
+    const ctrlY1 = startY + Math.max(20, Math.abs(endY - startY) * 0.4);
+    const ctrlY2 = endY - Math.max(20, Math.abs(endY - startY) * 0.4);
 
-        const [x, y, w, h] = b.patching_rect;
-        
-        maxX = Math.max(maxX, x + w);
-        maxY = Math.max(maxY, y + h);
-
-        const el = document.createElement("div");
-        el.className = "max-box";
-        el.style.left = `${x}px`;
-        el.style.top = `${y}px`;
-        el.style.width = `${w}px`;
-        el.style.height = `${h}px`;
-        el.textContent = b.text || b.maxclass;
-        
-        if (b.patcher) {
-            el.style.borderStyle = "double";
-            el.style.borderWidth = "3px";
-            el.style.cursor = "pointer";
-            el.addEventListener("dblclick", () => navigateToSubpatch(b.patcher, b.patcher));
-        }
-        
-        container.appendChild(el);
-    });
-
-    container.style.width = `${maxX + 200}px`;
-    container.style.height = `${maxY + 200}px`;
-
-    const svgNS = "http://www.w3.org/2000/svg";
-    
-    lines.forEach(item => {
-        const l = item.patchline;
-        if (!l) return;
-
-        const src = boxDict.get(l.source[0]);
-        const dst = boxDict.get(l.destination[0]);
-
-        if (src && dst) {
-            const [sx, sy, sw, sh] = src.patching_rect;
-            const [dx, dy, dw, dh] = dst.patching_rect;
-
-            const srcOutlets = src.numoutlets || 1;
-            const dstInlets = dst.numinlets || 1;
-            const srcOutletIndex = l.source[1];
-            const dstInletIndex = l.destination[1];
-
-            const startX = sx + (sw / (srcOutlets + 1)) * (srcOutletIndex + 1);
-            const startY = sy + sh;
-            const endX = dx + (dw / (dstInlets + 1)) * (dstInletIndex + 1);
-            const endY = dy;
-
-            const path = document.createElementNS(svgNS, "path");
-            path.setAttribute("class", "patchline");
-            
-            const ctrlY1 = startY + Math.max(20, Math.abs(endY - startY) * 0.4);
-            const ctrlY2 = endY - Math.max(20, Math.abs(endY - startY) * 0.4);
-            
-            path.setAttribute("d", `M ${startX} ${startY} C ${startX} ${ctrlY1}, ${endX} ${ctrlY2}, ${endX} ${endY}`);
-            svgLayer.appendChild(path);
-        }
-    });
+    path.setAttribute("d", `M ${startX} ${startY} C ${startX} ${ctrlY1}, ${endX} ${ctrlY2}, ${endX} ${endY}`);
+    return path;
 }
