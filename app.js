@@ -199,16 +199,24 @@ function render(boxes, lines, isDiff) {
         el.className = `max-box ${b.maxclass || ""} ${isDiff ? (b.diffState || "") : ""}`;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
-        el.style.width = `${w}px`;
+        // Use min-width/height instead of fixed width/height to allow expansion
+        el.style.minWidth = `${w}px`;
         el.style.height = `${h}px`;
-        el.textContent = b.text || b.maxclass;
+        
+        // Create text span
+        const textSpan = document.createElement("span");
+        textSpan.textContent = b.text || b.maxclass;
+        el.appendChild(textSpan);
 
         // Render inlets
         const numInlets = b.numinlets || 1;
         for (let i = 0; i < numInlets; i++) {
             const inlet = document.createElement("div");
             inlet.className = "inlet-point";
-            inlet.style.left = `${(w / (numInlets + 1)) * (i + 1) - 4}px`;
+            // Position relative to the box width, but we need to be careful if box expands
+            // For now, let's stick to the original width for inlet positioning or use percentage
+            inlet.style.left = `${(100 / (numInlets + 1)) * (i + 1)}%`;
+            inlet.style.transform = "translateX(-50%)";
             el.appendChild(inlet);
         }
 
@@ -217,7 +225,8 @@ function render(boxes, lines, isDiff) {
         for (let i = 0; i < numOutlets; i++) {
             const outlet = document.createElement("div");
             outlet.className = "outlet-point";
-            outlet.style.left = `${(w / (numOutlets + 1)) * (i + 1) - 4}px`;
+            outlet.style.left = `${(100 / (numOutlets + 1)) * (i + 1)}%`;
+            outlet.style.transform = "translateX(-50%)";
             el.appendChild(outlet);
         }
 
@@ -258,6 +267,8 @@ function createConnectionPath(src, dst, line) {
     const srcOutletIndex = line.source[1];
     const dstInletIndex = line.destination[1];
 
+    // Calculate positions based on original rects to keep lines stable
+    // even if boxes expand visually
     const startX = sx + (sw / (srcOutlets + 1)) * (srcOutletIndex + 1);
     const startY = sy + sh;
     const endX = dx + (dw / (dstInlets + 1)) * (dstInletIndex + 1);
