@@ -2,6 +2,7 @@ const container = document.getElementById("patcher-container");
 const svgLayer = document.getElementById("patchline-svg");
 const fileInputsDiv = document.getElementById("file-inputs");
 const viewToggles = document.getElementById("view-toggles");
+const wrapper = document.getElementById("patcher-wrapper");
 const svgNS = "http://www.w3.org/2000/svg";
 
 let dataA = null;
@@ -377,6 +378,7 @@ function getBoxDisplayName(box) {
 
 function render(boxes, lines, isDiff) {
     container.querySelectorAll(".max-box").forEach(el => el.remove());
+    container.querySelectorAll(".patch-rect").forEach(el => el.remove());
     svgLayer.innerHTML = "";
 
     const boxDict = new Map();
@@ -547,18 +549,37 @@ function createConnectionPath(src, dst, line) {
 }
 
 // Zoom functionality
-function setZoom(level) {
-    zoomLevel = level;
+function setZoom(newLevel, pivot) {
+    const oldLevel = zoomLevel;
+    newLevel = Math.max(0.2, Math.min(newLevel, 3.0));
+
+    if (newLevel === oldLevel) return;
+
+    const rect = wrapper.getBoundingClientRect();
+    const px = pivot ? pivot.x - rect.left : wrapper.clientWidth / 2;
+    const py = pivot ? pivot.y - rect.top : wrapper.clientHeight / 2;
+
+    const scrollLeft = wrapper.scrollLeft;
+    const scrollTop = wrapper.scrollTop;
+
+    const ratio = newLevel / oldLevel;
+    const newScrollLeft = (px + scrollLeft) * ratio - px;
+    const newScrollTop = (py + scrollTop) * ratio - py;
+
+    zoomLevel = newLevel;
     container.style.transform = `scale(${zoomLevel})`;
     document.getElementById("btn-zoom-reset").textContent = `${Math.round(zoomLevel * 100)}%`;
+
+    wrapper.scrollLeft = newScrollLeft;
+    wrapper.scrollTop = newScrollTop;
 }
 
 document.getElementById("btn-zoom-in").addEventListener("click", () => {
-    setZoom(Math.min(zoomLevel + 0.1, 3.0));
+    setZoom(zoomLevel * 1.1);
 });
 
 document.getElementById("btn-zoom-out").addEventListener("click", () => {
-    setZoom(Math.max(zoomLevel - 0.1, 0.1));
+    setZoom(zoomLevel / 1.1);
 });
 
 document.getElementById("btn-zoom-reset").addEventListener("click", () => {
@@ -568,8 +589,9 @@ document.getElementById("btn-zoom-reset").addEventListener("click", () => {
 document.getElementById("patcher-wrapper").addEventListener("wheel", (e) => {
     if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        setZoom(Math.max(0.1, Math.min(zoomLevel + delta, 3.0)));
+        const pivot = { x: e.clientX, y: e.clientY };
+        const factor = e.deltaY > 0 ? 1 / 1.05 : 1.05;
+        setZoom(zoomLevel * factor, pivot);
     }
 });
 
