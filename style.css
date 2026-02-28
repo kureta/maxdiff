@@ -9,6 +9,7 @@ body {
     display: flex;
     flex-direction: column;
 }
+
 #controls {
     margin-bottom: 20px;
     display: flex;
@@ -16,6 +17,7 @@ body {
     align-items: center;
     flex-wrap: wrap;
 }
+
 #viewport {
     flex: 1;
     width: 100%;
@@ -24,16 +26,19 @@ body {
     background-color: #1e1e1e;
     position: relative;
 }
+
 #patcher-wrapper {
     width: 100%;
     height: 100%;
     overflow: auto;
     position: relative;
 }
+
 #patcher-container {
     position: relative;
     transform-origin: top left;
 }
+
 .max-box {
     position: absolute;
     background-color: #333;
@@ -48,15 +53,23 @@ body {
     color: #ccc;
     justify-content: flex-start;
     z-index: 10;
+    cursor: pointer;
 }
+
+.max-box:hover {
+    border-color: #999;
+}
+
 .max-box.message {
     background-color: #555;
     border-radius: 10px;
 }
+
 .max-box.comment {
     background-color: transparent;
     border: none;
 }
+
 /* Inlet/Outlet specific styles */
 .max-box.inlet, .max-box.outlet {
     background-color: #333;
@@ -94,12 +107,15 @@ body {
     background-color: #888;
     border-radius: 2px;
 }
+
 .inlet-point {
     top: -2px;
 }
+
 .outlet-point {
     bottom: -2px;
 }
+
 #patchline-svg {
     position: absolute;
     top: 0;
@@ -109,15 +125,140 @@ body {
     pointer-events: none;
     z-index: 5;
 }
+
 .patchline {
     stroke: #888;
     stroke-width: 2;
     fill: none;
     stroke-linecap: round;
 }
-.added { border-color: #4caf50 !important; color: #4caf50 !important; }
-.removed { border-color: #f44336 !important; color: #f44336 !important; opacity: 0.6; stroke-dasharray: 5, 5; }
-.modified { border-color: #ff9800 !important; color: #ff9800 !important; }
-.patchline.added { stroke: #4caf50 !important; }
-.patchline.removed { stroke: #f44336 !important; stroke-dasharray: 5, 5; }
-.moved { border-color: #2196f3 !important; color: #2196f3 !important; border-style: dashed !important; }
+
+.added {
+    border-color: #4caf50 !important;
+    color: #4caf50 !important;
+}
+
+.removed {
+    border-color: #f44336 !important;
+    color: #f44336 !important;
+    opacity: 0.6;
+    stroke-dasharray: 5, 5;
+}
+
+.modified {
+    border-color: #ff9800 !important;
+    color: #ff9800 !important;
+}
+
+.patchline.added {
+    stroke: #4caf50 !important;
+}
+
+.patchline.removed {
+    stroke: #f44336 !important;
+    stroke-dasharray: 5, 5;
+}
+
+.moved {
+    border-color: #2196f3 !important;
+    color: #2196f3 !important;
+    border-style: dashed !important;
+}
+
+/* Diff text styles */
+.diff-text-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+}
+
+.diff-old-text {
+    text-decoration: line-through;
+    color: #f44336;
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.diff-new-text {
+    color: #4caf50;
+    font-weight: bold;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal-content {
+    background-color: #2b2b2b;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 50%;
+    color: #d4d4d4;
+    border-radius: 5px;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.attr-change {
+    margin-bottom: 10px;
+    padding: 5px;
+    border-bottom: 1px solid #444;
+}
+
+.attr-name {
+    font-weight: bold;
+    color: #ccc;
+}
+
+.attr-old {
+    color: #f44336;
+    text-decoration: line-through;
+    margin-right: 10px;
+}
+
+.attr-new {
+    color: #4caf50;
+}
+
+/* Info Indicator */
+.info-indicator {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 16px;
+    height: 16px;
+    background-color: #2196f3;
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    z-index: 20;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}

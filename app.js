@@ -17,6 +17,21 @@ document.getElementById("controls").appendChild(btnBack);
 
 const navStack = [];
 
+// Modal elements
+const modal = document.getElementById("details-modal");
+const modalContent = document.getElementById("diff-content");
+const closeButton = document.querySelector(".close-button");
+
+closeButton.addEventListener("click", () => {
+    modal.style.display = "none";
+});
+
+window.addEventListener("click", (event) => {
+    if (event.target === modal) {
+        modal.style.display = "none";
+    }
+});
+
 window.addEventListener("pagehide", () => {
     navigator.sendBeacon("/shutdown");
 });
@@ -31,10 +46,10 @@ btnBack.addEventListener("click", () => {
 });
 
 function navigateToSubpatch(pA, pB) {
-    navStack.push({ dataA, dataB });
+    navStack.push({dataA, dataB});
     btnBack.style.display = "inline-block";
-    dataA = pA ? { patcher: pA } : null;
-    dataB = pB ? { patcher: pB } : null;
+    dataA = pA ? {patcher: pA} : null;
+    dataB = pB ? {patcher: pB} : null;
     if (dataA && dataB) {
         currentDiffData = comparePatches(dataA, dataB);
     }
@@ -46,7 +61,7 @@ document.querySelectorAll('input[name="view"]').forEach(radio => {
 });
 
 function normalizePatchData(data) {
-    if (!data || !data.patcher) return { boxes: [], lines: [] };
+    if (!data || !data.patcher) return {boxes: [], lines: []};
     return {
         boxes: (data.patcher.boxes || []).map(item => item.box),
         lines: (data.patcher.lines || []).map(item => item.patchline)
@@ -55,10 +70,10 @@ function normalizePatchData(data) {
 
 function updateView(mode) {
     if (mode === "before") {
-        const { boxes, lines } = normalizePatchData(dataA);
+        const {boxes, lines} = normalizePatchData(dataA);
         render(boxes, lines, false);
     } else if (mode === "after") {
-        const { boxes, lines } = normalizePatchData(dataB);
+        const {boxes, lines} = normalizePatchData(dataB);
         render(boxes, lines, false);
     } else if (mode === "diff" && currentDiffData) {
         render(currentDiffData.boxes, currentDiffData.lines, true);
@@ -94,7 +109,7 @@ async function checkLocalServer() {
         if (response.ok) {
             const data = await response.json();
             fileInputsDiv.style.display = "none";
-            
+
             if (data.filename) {
                 document.title = `Diff: ${data.filename}`;
             }
@@ -119,8 +134,8 @@ function handleFile(event, callback) {
 checkLocalServer();
 
 function comparePatches(dataA, dataB) {
-    const { boxes: boxesA, lines: linesA } = normalizePatchData(dataA);
-    const { boxes: boxesB, lines: linesB } = normalizePatchData(dataB);
+    const {boxes: boxesA, lines: linesA} = normalizePatchData(dataA);
+    const {boxes: boxesB, lines: linesB} = normalizePatchData(dataB);
 
     const dictA = new Map(boxesA.map(b => [b.id, b]));
     const dictB = new Map(boxesB.map(b => [b.id, b]));
@@ -131,7 +146,7 @@ function comparePatches(dataA, dataB) {
     for (const [id, boxA] of dictA.entries()) {
         const boxB = dictB.get(id);
         if (!boxB) {
-            diffBoxes.push({ ...boxA, diffState: "removed", patcherA: boxA.patcher, patcherB: null });
+            diffBoxes.push({...boxA, diffState: "removed", patcherA: boxA.patcher, patcherB: null});
         } else {
             const [xA, yA, wA, hA] = boxA.patching_rect;
             const [xB, yB, wB, hB] = boxB.patching_rect;
@@ -139,24 +154,44 @@ function comparePatches(dataA, dataB) {
             const textB = boxB.text || boxB.maxclass;
             const patcherAStr = boxA.patcher ? JSON.stringify(boxA.patcher) : "";
             const patcherBStr = boxB.patcher ? JSON.stringify(boxB.patcher) : "";
-            
-            const isContentModified = textA !== textB || patcherAStr !== patcherBStr || wA !== wB || hA !== hB;
+
+            // Compare attributes
+            const attrDiffs = [];
+            const allKeys = new Set([...Object.keys(boxA), ...Object.keys(boxB)]);
+            // Ignore standard keys that we handle separately or don't care about for attribute diffs
+            const ignoredKeys = new Set(["id", "patching_rect", "text", "maxclass", "numinlets", "numoutlets", "patcher", "outlettype"]);
+
+            for (const key of allKeys) {
+                if (ignoredKeys.has(key)) continue;
+
+                // Deep comparison for objects/arrays might be needed, but simple JSON stringify is a good start
+                const valA = JSON.stringify(boxA[key]);
+                const valB = JSON.stringify(boxB[key]);
+
+                if (valA !== valB) {
+                    attrDiffs.push({key, old: boxA[key], new: boxB[key]});
+                }
+            }
+
+            const isContentModified = textA !== textB || patcherAStr !== patcherBStr || wA !== wB || hA !== hB || attrDiffs.length > 0;
             const isPositionModified = xA !== xB || yA !== yB;
-            
+
             let diffState = "unchanged";
             if (isContentModified) {
                 diffState = "modified";
             } else if (isPositionModified) {
                 diffState = "moved";
             }
-            
-            diffBoxes.push({ ...boxB, diffState, patcherA: boxA.patcher, patcherB: boxB.patcher });
+
+            diffBoxes.push({
+                ...boxB, diffState, patcherA: boxA.patcher, patcherB: boxB.patcher, oldText: textA, attrDiffs
+            });
         }
     }
 
     for (const [id, boxB] of dictB.entries()) {
         if (!dictA.has(id)) {
-            diffBoxes.push({ ...boxB, diffState: "added", patcherA: null, patcherB: boxB.patcher });
+            diffBoxes.push({...boxB, diffState: "added", patcherA: null, patcherB: boxB.patcher});
         }
     }
 
@@ -166,19 +201,88 @@ function comparePatches(dataA, dataB) {
 
     for (const [sig, lineA] of linesDictA.entries()) {
         if (!linesDictB.has(sig)) {
-            diffLines.push({ ...lineA, diffState: "removed" });
+            diffLines.push({...lineA, diffState: "removed"});
         } else {
-            diffLines.push({ ...linesDictB.get(sig), diffState: "unchanged" });
+            diffLines.push({...linesDictB.get(sig), diffState: "unchanged"});
         }
     }
 
     for (const [sig, lineB] of linesDictB.entries()) {
         if (!linesDictA.has(sig)) {
-            diffLines.push({ ...lineB, diffState: "added" });
+            diffLines.push({...lineB, diffState: "added"});
         }
     }
 
-    return { boxes: diffBoxes, lines: diffLines };
+    return {boxes: diffBoxes, lines: diffLines};
+}
+
+function showDetails(box) {
+    modalContent.innerHTML = "";
+    let hasContent = false;
+
+    if (box.diffState === "modified" && box.attrDiffs && box.attrDiffs.length > 0) {
+        box.attrDiffs.forEach(diff => {
+            // Special handling for saved_attribute_attributes to show only changed values
+            if (diff.key === "saved_attribute_attributes") {
+                const oldAttrs = diff.old?.valueof || {};
+                const newAttrs = diff.new?.valueof || {};
+                const allAttrKeys = new Set([...Object.keys(oldAttrs), ...Object.keys(newAttrs)]);
+
+                allAttrKeys.forEach(attrKey => {
+                    const oldVal = JSON.stringify(oldAttrs[attrKey]);
+                    const newVal = JSON.stringify(newAttrs[attrKey]);
+
+                    if (oldVal !== newVal) {
+                        const div = document.createElement("div");
+                        div.className = "attr-change";
+
+                        const name = document.createElement("div");
+                        name.className = "attr-name";
+                        name.textContent = `saved_attribute_attributes -> ${attrKey}`;
+
+                        const oldSpan = document.createElement("span");
+                        oldSpan.className = "attr-old";
+                        oldSpan.textContent = oldVal;
+
+                        const newSpan = document.createElement("span");
+                        newSpan.className = "attr-new";
+                        newSpan.textContent = newVal;
+
+                        div.appendChild(name);
+                        div.appendChild(oldSpan);
+                        div.appendChild(newSpan);
+                        modalContent.appendChild(div);
+                        hasContent = true;
+                    }
+                });
+            } else {
+                const div = document.createElement("div");
+                div.className = "attr-change";
+
+                const name = document.createElement("div");
+                name.className = "attr-name";
+                name.textContent = diff.key;
+
+                const oldVal = document.createElement("span");
+                oldVal.className = "attr-old";
+                oldVal.textContent = JSON.stringify(diff.old);
+
+                const newVal = document.createElement("span");
+                newVal.className = "attr-new";
+                newVal.textContent = JSON.stringify(diff.new);
+
+                div.appendChild(name);
+                div.appendChild(oldVal);
+                div.appendChild(newVal);
+                modalContent.appendChild(div);
+                hasContent = true;
+            }
+        });
+    }
+
+    if (hasContent) {
+        modal.style.display = "block";
+    }
 }
 
 function render(boxes, lines, isDiff) {
@@ -200,14 +304,31 @@ function render(boxes, lines, isDiff) {
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         el.style.minWidth = `${w}px`;
-        el.style.height = `${h}px`;
+        el.style.minHeight = `${h}px`;
+
+        // Add visual indicator for clickable details
+        if (isDiff && b.diffState === "modified" && b.attrDiffs && b.attrDiffs.length > 0) {
+            el.style.cursor = "help"; // Change cursor to indicate help/info
+            const indicator = document.createElement("div");
+            indicator.className = "info-indicator";
+            indicator.textContent = "i";
+            el.appendChild(indicator);
+        }
+
+        // Click handler for details
+        el.addEventListener("click", (e) => {
+            // Prevent double click from triggering this if it's a subpatch navigation
+            if (e.detail === 1 && isDiff) {
+                showDetails(b);
+            }
+        });
 
         if (b.maxclass === "inlet") {
             const numDiv = document.createElement("div");
             numDiv.className = "io-number";
             numDiv.textContent = b.index || 1;
             el.appendChild(numDiv);
-            
+
             const triDiv = document.createElement("div");
             triDiv.className = "io-triangle";
             el.appendChild(triDiv);
@@ -221,9 +342,28 @@ function render(boxes, lines, isDiff) {
             numDiv.textContent = b.index || 1;
             el.appendChild(numDiv);
         } else {
-            const textSpan = document.createElement("span");
-            textSpan.textContent = b.text || b.maxclass;
-            el.appendChild(textSpan);
+            const currentText = b.text || b.maxclass;
+
+            if (isDiff && b.diffState === "modified" && b.oldText && b.oldText !== currentText) {
+                const container = document.createElement("div");
+                container.className = "diff-text-container";
+
+                const oldSpan = document.createElement("div");
+                oldSpan.className = "diff-old-text";
+                oldSpan.textContent = b.oldText;
+
+                const newSpan = document.createElement("div");
+                newSpan.className = "diff-new-text";
+                newSpan.textContent = currentText;
+
+                container.appendChild(oldSpan);
+                container.appendChild(newSpan);
+                el.appendChild(container);
+            } else {
+                const textSpan = document.createElement("span");
+                textSpan.textContent = currentText;
+                el.appendChild(textSpan);
+            }
         }
 
         // Render inlets
@@ -252,8 +392,7 @@ function render(boxes, lines, isDiff) {
             el.style.borderWidth = "3px";
             el.style.cursor = "pointer";
             el.addEventListener("dblclick", () => {
-                if (isDiff) navigateToSubpatch(b.patcherA, b.patcherB);
-                else navigateToSubpatch(b.patcher, b.patcher);
+                if (isDiff) navigateToSubpatch(b.patcherA, b.patcherB); else navigateToSubpatch(b.patcher, b.patcher);
             });
         }
         container.appendChild(el);
