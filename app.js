@@ -326,8 +326,8 @@ function render(boxes, lines, isDiff) {
         el.className = `max-box ${b.maxclass || ""} ${isDiff ? (b.diffState || "") : ""}`;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
-        el.style.minWidth = `${w}px`;
-        el.style.minHeight = `${h}px`;
+        el.style.width = `${w}px`;
+        el.style.height = `${h}px`;
 
         // Add visual indicator for clickable details
         if (isDiff && b.diffState === "modified" && b.attrDiffs && b.attrDiffs.length > 0) {
