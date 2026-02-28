@@ -196,12 +196,30 @@ function render(boxes, lines, isDiff) {
         maxY = Math.max(maxY, y + h);
 
         const el = document.createElement("div");
-        el.className = `max-box ${isDiff ? (b.diffState || "") : ""}`;
+        el.className = `max-box ${b.maxclass || ""} ${isDiff ? (b.diffState || "") : ""}`;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         el.style.width = `${w}px`;
         el.style.height = `${h}px`;
         el.textContent = b.text || b.maxclass;
+
+        // Render inlets
+        const numInlets = b.numinlets || 1;
+        for (let i = 0; i < numInlets; i++) {
+            const inlet = document.createElement("div");
+            inlet.className = "inlet-point";
+            inlet.style.left = `${(w / (numInlets + 1)) * (i + 1) - 4}px`;
+            el.appendChild(inlet);
+        }
+
+        // Render outlets
+        const numOutlets = b.numoutlets || 1;
+        for (let i = 0; i < numOutlets; i++) {
+            const outlet = document.createElement("div");
+            outlet.className = "outlet-point";
+            outlet.style.left = `${(w / (numOutlets + 1)) * (i + 1) - 4}px`;
+            el.appendChild(outlet);
+        }
 
         const hasSubpatch = isDiff ? (b.patcherA || b.patcherB) : b.patcher;
         if (hasSubpatch) {
