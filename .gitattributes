@@ -1,1 +1,2 @@
 *.maxpat diff=maxdiff
+*.amxd diff=maxdiff
