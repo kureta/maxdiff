@@ -69,6 +69,10 @@ document.getElementById("fileInputB").addEventListener("change", (e) => {
     });
 });
 
+document.getElementById("btn-reset-layout").addEventListener("click", () => {
+    handleDataUpdate();
+});
+
 // --- Core Logic ---
 
 function navigateToSubpatch(pA, pB) {
@@ -85,8 +89,8 @@ function navigateToSubpatch(pA, pB) {
 function normalizePatchData(data) {
     if (!data || !data.patcher) return {boxes: [], lines: []};
     return {
-        boxes: (data.patcher.boxes || []).map(item => item.box),
-        lines: (data.patcher.lines || []).map(item => item.patchline)
+        boxes: (data.patcher.boxes || []).map(item => JSON.parse(JSON.stringify(item.box))),
+        lines: (data.patcher.lines || []).map(item => JSON.parse(JSON.stringify(item.patchline)))
     };
 }
 
@@ -407,8 +411,11 @@ function render(boxes, lines, isDiff) {
         }
 
         el.addEventListener("click", (e) => {
+            if (el.getAttribute("data-dragged") === "true") return;
             if (e.detail === 1 && isDiff) showDetails(b);
         });
+
+        makeDraggable(el, b, lines, boxDict);
 
         if (b.maxclass === "inlet" || b.maxclass === "outlet") {
             renderIO(el, b);
@@ -439,6 +446,10 @@ function render(boxes, lines, isDiff) {
 
         if (src && dst) {
             const path = createConnectionPath(src, dst, l);
+            path.setAttribute("data-src", l.source[0]);
+            path.setAttribute("data-dst", l.destination[0]);
+            path.setAttribute("data-src-idx", l.source[1]);
+            path.setAttribute("data-dst-idx", l.destination[1]);
             if (isDiff && l.diffState) path.classList.add(l.diffState);
             svgLayer.appendChild(path);
         }
@@ -594,5 +605,68 @@ document.getElementById("patcher-wrapper").addEventListener("wheel", (e) => {
         setZoom(zoomLevel * factor, pivot);
     }
 });
+
+function makeDraggable(el, box, lines, boxDict) {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+    let hasMoved = false;
+
+    el.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        isDragging = true;
+        hasMoved = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = parseFloat(el.style.left);
+        initialTop = parseFloat(el.style.top);
+        el.style.zIndex = 100;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dx = (e.clientX - startX) / zoomLevel;
+        const dy = (e.clientY - startY) / zoomLevel;
+
+        if (dx === 0 && dy === 0) return;
+        hasMoved = true;
+
+        const newX = initialLeft + dx;
+        const newY = initialTop + dy;
+
+        el.style.left = `${newX}px`;
+        el.style.top = `${newY}px`;
+
+        box.patching_rect[0] = newX;
+        box.patching_rect[1] = newY;
+
+        updateConnectedLines(box, lines, boxDict);
+    });
+
+    window.addEventListener("mouseup", () => {
+        if (isDragging) {
+            isDragging = false;
+            el.style.zIndex = "";
+            if (hasMoved) {
+                el.setAttribute("data-dragged", "true");
+                setTimeout(() => el.removeAttribute("data-dragged"), 0);
+            }
+        }
+    });
+}
+
+function updateConnectedLines(movedBox, lines, boxDict) {
+    lines.forEach(l => {
+        if (l.source[0] === movedBox.id || l.destination[0] === movedBox.id) {
+            const selector = `path[data-src="${l.source[0]}"][data-dst="${l.destination[0]}"][data-src-idx="${l.source[1]}"][data-dst-idx="${l.destination[1]}"]`;
+            const path = svgLayer.querySelector(selector);
+            if (path) {
+                const src = boxDict.get(l.source[0]);
+                const dst = boxDict.get(l.destination[0]);
+                const newPath = createConnectionPath(src, dst, l);
+                path.setAttribute("d", newPath.getAttribute("d"));
+            }
+        }
+    });
+}
 
 checkLocalServer();
