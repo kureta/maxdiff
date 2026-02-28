@@ -41,7 +41,7 @@ btnBack.addEventListener("click", () => {
     if (navStack.length === 0) btnBack.style.display = "none";
     dataA = prevState.dataA;
     dataB = prevState.dataB;
-    if (dataA && dataB) currentDiffData = comparePatches(dataA, dataB);
+    if (dataA || dataB) currentDiffData = comparePatches(dataA, dataB);
     updateView(document.querySelector("input[name=\"view\"]:checked").value);
 });
 
@@ -50,7 +50,7 @@ function navigateToSubpatch(pA, pB) {
     btnBack.style.display = "inline-block";
     dataA = pA ? {patcher: pA} : null;
     dataB = pB ? {patcher: pB} : null;
-    if (dataA && dataB) {
+    if (dataA || dataB) {
         currentDiffData = comparePatches(dataA, dataB);
     }
     updateView(document.querySelector("input[name=\"view\"]:checked").value);
@@ -81,7 +81,7 @@ function updateView(mode) {
 }
 
 function handleDataUpdate() {
-    if (dataA && dataB) {
+    if (dataA || dataB) {
         currentDiffData = comparePatches(dataA, dataB);
         viewToggles.style.display = "block";
         const currentMode = document.querySelector('input[name="view"]:checked').value;
