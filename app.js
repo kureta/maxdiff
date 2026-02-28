@@ -120,18 +120,24 @@ function comparePatches(dataA, dataB) {
         if (!boxB) {
             diffBoxes.push({ ...boxA, diffState: "removed", patcherA: boxA.patcher, patcherB: null });
         } else {
-            const rectA = boxA.patching_rect.join(",");
-            const rectB = boxB.patching_rect.join(",");
+            const [xA, yA, wA, hA] = boxA.patching_rect;
+            const [xB, yB, wB, hB] = boxB.patching_rect;
             const textA = boxA.text || boxA.maxclass;
             const textB = boxB.text || boxB.maxclass;
             const patcherAStr = boxA.patcher ? JSON.stringify(boxA.patcher) : "";
             const patcherBStr = boxB.patcher ? JSON.stringify(boxB.patcher) : "";
             
-            if (rectA !== rectB || textA !== textB || patcherAStr !== patcherBStr) {
-                diffBoxes.push({ ...boxB, diffState: "modified", patcherA: boxA.patcher, patcherB: boxB.patcher });
-            } else {
-                diffBoxes.push({ ...boxB, diffState: "unchanged", patcherA: boxA.patcher, patcherB: boxB.patcher });
+            const isContentModified = textA !== textB || patcherAStr !== patcherBStr || wA !== wB || hA !== hB;
+            const isPositionModified = xA !== xB || yA !== yB;
+            
+            let diffState = "unchanged";
+            if (isContentModified) {
+                diffState = "modified";
+            } else if (isPositionModified) {
+                diffState = "moved";
             }
+            
+            diffBoxes.push({ ...boxB, diffState, patcherA: boxA.patcher, patcherB: boxB.patcher });
         }
     }
 
