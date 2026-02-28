@@ -292,19 +292,14 @@ function getBoxDisplayName(box) {
     const shortName = attributes.parameter_shortname;
     
     // Prefer longname, then shortname
-    const displayName = longName || shortName;
-    
-    if (displayName) {
-        return {
-            main: displayName,
-            sub: box.maxclass
-        };
-    }
-    
-    // Fallback to standard text or maxclass
+    const prettyName = longName || shortName;
+    const basicName = box.text || box.maxclass;
+    const displayName = prettyName || basicName;
+    const subText = (prettyName == basicName) || (!prettyName) ? null : basicName;
+
     return {
-        main: box.text || box.maxclass,
-        sub: null
+        main: displayName,
+        sub: subText
     };
 }
 
