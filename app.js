@@ -367,6 +367,21 @@ function createAttrChangeElement(parent, key, oldVal, newVal) {
     parent.appendChild(div);
 }
 
+function applySpecialNaming(box) {
+    let prefix = null;
+    let suffix = null;
+
+    switch (box.maxclass) {
+        case "bpatcher":
+            suffix = box.name;
+            break;
+        default:
+            break;
+    }
+
+    return [prefix, suffix];
+}
+
 function getBoxDisplayName(box) {
     const attributes = box.saved_attribute_attributes?.valueof || {};
     const longName = attributes.parameter_longname;
@@ -374,10 +389,24 @@ function getBoxDisplayName(box) {
 
     const prettyName = longName || shortName;
     const basicName = box.text || box.maxclass;
-    const displayName = prettyName || basicName;
+    let displayName = prettyName || basicName;
     const subText = (prettyName == basicName) || (!prettyName) ? null : basicName;
 
+    const [prefix, suffix] = applySpecialNaming(box);
+    if (prefix) displayName = `${prefix} ${displayName}`;
+    if (suffix) displayName = `${displayName} ${suffix}`;
+
     return {main: displayName, sub: subText};
+}
+
+function applySpecialStyle(box, element) {
+    switch (box.maxclass) {
+        case "panel":
+            element.style.zIndex = 5;
+            break
+        default:
+            break
+    }
 }
 
 function render(boxes, lines, isDiff) {
@@ -401,6 +430,8 @@ function render(boxes, lines, isDiff) {
         el.style.top = `${y}px`;
         el.style.width = `${w}px`;
         el.style.height = `${h}px`;
+
+        applySpecialStyle(b, el);
 
         if (isDiff && b.diffState === "modified" && b.attrDiffs && b.attrDiffs.length > 0) {
             el.style.cursor = "help";
