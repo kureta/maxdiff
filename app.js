@@ -106,12 +106,12 @@ function handleDataUpdate() {
 
     currentDiffData = comparePatches(dataA, dataB);
     viewToggles.style.display = "block";
-    
+
     const metaDiffs = compareMetadata(dataA, dataB);
-    
+
     btnMetadata.style.display = "inline-block";
     renderMetadataDiffs(metaDiffs);
-    
+
     if (metaDiffs.length > 0) {
         btnMetadata.disabled = false;
     } else {
@@ -171,7 +171,7 @@ function compareMetadata(dataA, dataB) {
 
         if (JSON.stringify(valA) !== JSON.stringify(valB)) {
             if (isObject(valA) && isObject(valB)) {
-                 diffs.push(...compareObjectDeep(valA, valB, key));
+                diffs.push(...compareObjectDeep(valA, valB, key));
             } else {
                 diffs.push({key, old: valA, new: valB});
             }
@@ -187,18 +187,18 @@ function isObject(val) {
 function compareObjectDeep(objA, objB, parentKey) {
     const diffs = [];
     const allKeys = new Set([...Object.keys(objA), ...Object.keys(objB)]);
-    
+
     for (const key of allKeys) {
         const valA = objA[key];
         const valB = objB[key];
         const currentKey = `${parentKey}.${key}`;
-        
+
         if (JSON.stringify(valA) !== JSON.stringify(valB)) {
-             if (isObject(valA) && isObject(valB)) {
-                 diffs.push(...compareObjectDeep(valA, valB, currentKey));
-             } else {
-                 diffs.push({key: currentKey, old: valA, new: valB});
-             }
+            if (isObject(valA) && isObject(valB)) {
+                diffs.push(...compareObjectDeep(valA, valB, currentKey));
+            } else {
+                diffs.push({key: currentKey, old: valA, new: valB});
+            }
         }
     }
     return diffs;
@@ -366,13 +366,13 @@ function getBoxDisplayName(box) {
     const attributes = box.saved_attribute_attributes?.valueof || {};
     const longName = attributes.parameter_longname;
     const shortName = attributes.parameter_shortname;
-    
+
     const prettyName = longName || shortName;
     const basicName = box.text || box.maxclass;
     const displayName = prettyName || basicName;
     const subText = (prettyName == basicName) || (!prettyName) ? null : basicName;
 
-    return { main: displayName, sub: subText };
+    return {main: displayName, sub: subText};
 }
 
 function render(boxes, lines, isDiff) {
@@ -463,23 +463,23 @@ function renderIO(el, b) {
 function renderBoxContent(el, b, isDiff) {
     const displayInfo = getBoxDisplayName(b);
     const currentText = displayInfo.main;
-    
+
     const contentDiv = document.createElement("div");
     contentDiv.className = "box-content";
-    
+
     let mainTextEl;
     if (isDiff && b.diffState === "modified" && b.oldText && b.oldText !== (b.text || b.maxclass) && !displayInfo.sub) {
         const diffContainer = document.createElement("div");
         diffContainer.className = "diff-text-container";
-        
+
         const oldSpan = document.createElement("div");
         oldSpan.className = "diff-old-text";
         oldSpan.textContent = b.oldText;
-        
+
         const newSpan = document.createElement("div");
         newSpan.className = "diff-new-text";
         newSpan.textContent = currentText;
-        
+
         diffContainer.appendChild(oldSpan);
         diffContainer.appendChild(newSpan);
         mainTextEl = diffContainer;
@@ -489,16 +489,16 @@ function renderBoxContent(el, b, isDiff) {
         span.textContent = currentText;
         mainTextEl = span;
     }
-    
+
     contentDiv.appendChild(mainTextEl);
-    
+
     if (displayInfo.sub) {
         const subSpan = document.createElement("span");
         subSpan.className = "sub-text";
         subSpan.textContent = `(${displayInfo.sub})`;
         contentDiv.appendChild(subSpan);
     }
-    
+
     el.appendChild(contentDiv);
 }
 
