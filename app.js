@@ -285,6 +285,29 @@ function showDetails(box) {
     }
 }
 
+function getBoxDisplayName(box) {
+    // Check for parameter_longname or parameter_shortname in saved_attribute_attributes
+    const attributes = box.saved_attribute_attributes?.valueof || {};
+    const longName = attributes.parameter_longname;
+    const shortName = attributes.parameter_shortname;
+    
+    // Prefer longname, then shortname
+    const displayName = longName || shortName;
+    
+    if (displayName) {
+        return {
+            main: displayName,
+            sub: box.maxclass
+        };
+    }
+    
+    // Fallback to standard text or maxclass
+    return {
+        main: box.text || box.maxclass,
+        sub: null
+    };
+}
+
 function render(boxes, lines, isDiff) {
     container.querySelectorAll(".max-box").forEach(el => el.remove());
     svgLayer.innerHTML = "";
@@ -342,28 +365,53 @@ function render(boxes, lines, isDiff) {
             numDiv.textContent = b.index || 1;
             el.appendChild(numDiv);
         } else {
-            const currentText = b.text || b.maxclass;
-
-            if (isDiff && b.diffState === "modified" && b.oldText && b.oldText !== currentText) {
-                const container = document.createElement("div");
-                container.className = "diff-text-container";
-
+            const displayInfo = getBoxDisplayName(b);
+            const currentText = displayInfo.main;
+            
+            // If we have a sub-text (e.g. maxclass), we render a structured content
+            // But we also need to handle diff text logic if the main text changed
+            
+            const contentDiv = document.createElement("div");
+            contentDiv.className = "box-content";
+            
+            // Check if main text changed (only if it's not a parameter name which usually doesn't change like text)
+            // If it's a parameter name, we assume it's stable or handled via attributes diff
+            // But if it's standard text, we check oldText
+            
+            let mainTextEl;
+            if (isDiff && b.diffState === "modified" && b.oldText && b.oldText !== (b.text || b.maxclass) && !displayInfo.sub) {
+                // This is the case where standard text changed, and we are not using parameter names
+                const diffContainer = document.createElement("div");
+                diffContainer.className = "diff-text-container";
+                
                 const oldSpan = document.createElement("div");
                 oldSpan.className = "diff-old-text";
                 oldSpan.textContent = b.oldText;
-
+                
                 const newSpan = document.createElement("div");
                 newSpan.className = "diff-new-text";
                 newSpan.textContent = currentText;
-
-                container.appendChild(oldSpan);
-                container.appendChild(newSpan);
-                el.appendChild(container);
+                
+                diffContainer.appendChild(oldSpan);
+                diffContainer.appendChild(newSpan);
+                mainTextEl = diffContainer;
             } else {
-                const textSpan = document.createElement("span");
-                textSpan.textContent = currentText;
-                el.appendChild(textSpan);
+                const span = document.createElement("span");
+                span.className = "main-text";
+                span.textContent = currentText;
+                mainTextEl = span;
             }
+            
+            contentDiv.appendChild(mainTextEl);
+            
+            if (displayInfo.sub) {
+                const subSpan = document.createElement("span");
+                subSpan.className = "sub-text";
+                subSpan.textContent = `(${displayInfo.sub})`;
+                contentDiv.appendChild(subSpan);
+            }
+            
+            el.appendChild(contentDiv);
         }
 
         // Render inlets
