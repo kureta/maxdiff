@@ -3,6 +3,7 @@
 import argparse
 import http.server
 import socketserver
+import threading
 import webbrowser
 import json
 
@@ -22,15 +23,28 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+    def do_POST(self) -> None:
+        if self.path == "/shutdown":
+            self.send_response(200)
+            self.end_headers()
+            threading.Thread(target=self.server.shutdown).start()
+        else:
+            self.send_error(404)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("path", type=str)
     parser.add_argument("old_file", type=str)
+    parser.add_argument("old_hex", type=str)
+    parser.add_argument("old_mode", type=str)
     parser.add_argument("new_file", type=str)
+    parser.add_argument("new_hex", type=str)
+    parser.add_argument("new_mode", type=str)
     args = parser.parse_args()
 
-    port = 8000
-    with socketserver.TCPServer(("", port), DiffHandler) as httpd:
+    with socketserver.TCPServer(("", 0), DiffHandler) as httpd:
+        port = httpd.server_address[1]
         httpd.old_file = args.old_file
         httpd.new_file = args.new_file
         webbrowser.open(f"http://localhost:{port}")

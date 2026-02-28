@@ -15,6 +15,10 @@ document.getElementById("controls").appendChild(btnBack);
 
 const navStack = [];
 
+ window.addEventListener("pagehide", () => {
+    navigator.sendBeacon("/shutdown");
+});
+
 btnBack.addEventListener("click", () => {
     const prevState = navStack.pop();
     if (navStack.length === 0) btnBack.style.display = "none";
