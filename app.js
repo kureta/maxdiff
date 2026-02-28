@@ -7,6 +7,7 @@ const svgNS = "http://www.w3.org/2000/svg";
 let dataA = null;
 let dataB = null;
 let currentDiffData = null;
+let zoomLevel = 1.0;
 
 const btnBack = document.createElement("button");
 btnBack.id = "btn-back";
@@ -253,3 +254,31 @@ function createConnectionPath(src, dst, line) {
     path.setAttribute("d", `M ${startX} ${startY} C ${startX} ${ctrlY1}, ${endX} ${ctrlY2}, ${endX} ${endY}`);
     return path;
 }
+
+// Zoom functionality
+function setZoom(level) {
+    zoomLevel = level;
+    container.style.transform = `scale(${zoomLevel})`;
+    document.getElementById("btn-zoom-reset").textContent = `${Math.round(zoomLevel * 100)}%`;
+}
+
+document.getElementById("btn-zoom-in").addEventListener("click", () => {
+    setZoom(Math.min(zoomLevel + 0.1, 3.0));
+});
+
+document.getElementById("btn-zoom-out").addEventListener("click", () => {
+    setZoom(Math.max(zoomLevel - 0.1, 0.1));
+});
+
+document.getElementById("btn-zoom-reset").addEventListener("click", () => {
+    setZoom(1.0);
+});
+
+// Mouse wheel zoom
+document.getElementById("patcher-wrapper").addEventListener("wheel", (e) => {
+    if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        setZoom(Math.max(0.1, Math.min(zoomLevel + delta, 3.0)));
+    }
+});

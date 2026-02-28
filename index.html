@@ -17,10 +17,17 @@
             <label><input type="radio" name="view" value="after"> After</label>
             <label><input type="radio" name="view" value="diff" checked> Diff</label>
         </div>
+        <div id="zoom-controls">
+            <button id="btn-zoom-out">-</button>
+            <button id="btn-zoom-reset">100%</button>
+            <button id="btn-zoom-in">+</button>
+        </div>
     </div>
     <div id="viewport">
-        <div id="patcher-container">
-            <svg id="patchline-svg"></svg>
+        <div id="patcher-wrapper">
+            <div id="patcher-container">
+                <svg id="patchline-svg"></svg>
+            </div>
         </div>
     </div>
     <script src="app.js"></script>
