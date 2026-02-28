@@ -199,22 +199,38 @@ function render(boxes, lines, isDiff) {
         el.className = `max-box ${b.maxclass || ""} ${isDiff ? (b.diffState || "") : ""}`;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
-        // Use min-width/height instead of fixed width/height to allow expansion
         el.style.minWidth = `${w}px`;
         el.style.height = `${h}px`;
-        
-        // Create text span
-        const textSpan = document.createElement("span");
-        textSpan.textContent = b.text || b.maxclass;
-        el.appendChild(textSpan);
+
+        if (b.maxclass === "inlet") {
+            const numDiv = document.createElement("div");
+            numDiv.className = "io-number";
+            numDiv.textContent = b.index || 1;
+            el.appendChild(numDiv);
+            
+            const triDiv = document.createElement("div");
+            triDiv.className = "io-triangle";
+            el.appendChild(triDiv);
+        } else if (b.maxclass === "outlet") {
+            const triDiv = document.createElement("div");
+            triDiv.className = "io-triangle";
+            el.appendChild(triDiv);
+
+            const numDiv = document.createElement("div");
+            numDiv.className = "io-number";
+            numDiv.textContent = b.index || 1;
+            el.appendChild(numDiv);
+        } else {
+            const textSpan = document.createElement("span");
+            textSpan.textContent = b.text || b.maxclass;
+            el.appendChild(textSpan);
+        }
 
         // Render inlets
         const numInlets = b.numinlets || 1;
         for (let i = 0; i < numInlets; i++) {
             const inlet = document.createElement("div");
             inlet.className = "inlet-point";
-            // Position relative to the box width, but we need to be careful if box expands
-            // For now, let's stick to the original width for inlet positioning or use percentage
             inlet.style.left = `${(100 / (numInlets + 1)) * (i + 1)}%`;
             inlet.style.transform = "translateX(-50%)";
             el.appendChild(inlet);
@@ -267,8 +283,6 @@ function createConnectionPath(src, dst, line) {
     const srcOutletIndex = line.source[1];
     const dstInletIndex = line.destination[1];
 
-    // Calculate positions based on original rects to keep lines stable
-    // even if boxes expand visually
     const startX = sx + (sw / (srcOutlets + 1)) * (srcOutletIndex + 1);
     const startY = sy + sh;
     const endX = dx + (dw / (dstInlets + 1)) * (dstInletIndex + 1);
