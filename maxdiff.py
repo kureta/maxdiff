@@ -75,21 +75,55 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    # Ensure we serve files from the script's directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Capture current working directory before changing it
+    cwd = os.getcwd()
+    
+    # Change to script directory to serve static files
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
 
     parser = argparse.ArgumentParser(description="Max/MSP Patch Diff Tool")
-    parser.add_argument("path", type=str, help="Path to the file being compared")
-    parser.add_argument("old_file", type=str, help="Path to the old version")
-    parser.add_argument("old_hex", type=str, help="SHA1 hash of the old version")
-    parser.add_argument("old_mode", type=str, help="File mode of the old version")
-    parser.add_argument("new_file", type=str, help="Path to the new version")
-    parser.add_argument("new_hex", type=str, help="SHA1 hash of the new version")
-    parser.add_argument("new_mode", type=str, help="File mode of the new version")
+    
+    # We accept arbitrary arguments and parse them manually to support both modes
+    parser.add_argument("args", nargs="*", help="Arguments")
+    
     args = parser.parse_args()
+    raw_args = args.args
+    
+    old_file = ""
+    new_file = ""
+    file_path = ""
+    
+    if len(raw_args) == 7:
+        # Git difftool mode: path old_file old_hex old_mode new_file new_hex new_mode
+        file_path = raw_args[0]
+        old_file = raw_args[1]
+        new_file = raw_args[4]
+        
+        # Resolve paths relative to original CWD if they are not absolute
+        if not os.path.isabs(old_file) and old_file != "/dev/null":
+            old_file = os.path.abspath(os.path.join(cwd, old_file))
+        if not os.path.isabs(new_file) and new_file != "/dev/null":
+            new_file = os.path.abspath(os.path.join(cwd, new_file))
+            
+    elif len(raw_args) == 2:
+        # Standalone mode: old_file new_file
+        old_file_arg = raw_args[0]
+        new_file_arg = raw_args[1]
+        
+        file_path = f"{os.path.basename(old_file_arg)} vs {os.path.basename(new_file_arg)}"
+        
+        # Resolve paths relative to original CWD
+        old_file = os.path.abspath(os.path.join(cwd, old_file_arg))
+        new_file = os.path.abspath(os.path.join(cwd, new_file_arg))
+        
+    else:
+        print("Usage modes:")
+        print("  1. Git difftool: maxdiff.py path old_file old_hex old_mode new_file new_hex new_mode")
+        print("  2. Standalone:   maxdiff.py old_file.maxpat new_file.maxpat")
+        return
 
-    with DiffServer(("", 0), DiffHandler, args.old_file, args.new_file,
-            args.path) as httpd:
+    with DiffServer(("", 0), DiffHandler, old_file, new_file, file_path) as httpd:
         port = httpd.server_address[1]
         print(f"Serving diff tool at http://localhost:{port}")
         print("Press Ctrl+C to stop manually.")
