@@ -1,9 +1,26 @@
+:root {
+    --bg-color: #2b2b2b;
+    --bg-dark: #1e1e1e;
+    --bg-box: #333;
+    --bg-message: #555;
+    --text-color: #d4d4d4;
+    --text-muted: #ccc;
+    --border-color: #444;
+    --border-box: #666;
+    --border-hover: #999;
+    --accent-added: #4caf50;
+    --accent-removed: #f44336;
+    --accent-modified: #ff9800;
+    --accent-moved: #2196f3;
+    --io-color: #888;
+}
+
 body {
     font-family: "Lato", "Arial", sans-serif;
     margin: 0;
     padding: 20px;
-    background-color: #2b2b2b;
-    color: #d4d4d4;
+    background-color: var(--bg-color);
+    color: var(--text-color);
     height: 100vh;
     box-sizing: border-box;
     display: flex;
@@ -22,8 +39,8 @@ body {
     flex: 1;
     width: 100%;
     overflow: hidden;
-    border: 1px solid #444;
-    background-color: #1e1e1e;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-dark);
     position: relative;
 }
 
@@ -39,10 +56,11 @@ body {
     transform-origin: top left;
 }
 
+/* Max Box Styles */
 .max-box {
     position: absolute;
-    background-color: #333;
-    border: 1px solid #666;
+    background-color: var(--bg-box);
+    border: 1px solid var(--border-box);
     box-sizing: border-box;
     padding: 0 4px;
     font-size: 10px;
@@ -50,7 +68,7 @@ body {
     white-space: pre-wrap;
     display: flex;
     align-items: center;
-    color: #ccc;
+    color: var(--text-muted);
     justify-content: center;
     z-index: 10;
     cursor: pointer;
@@ -58,11 +76,11 @@ body {
 }
 
 .max-box:hover {
-    border-color: #999;
+    border-color: var(--border-hover);
 }
 
 .max-box.message {
-    background-color: #555;
+    background-color: var(--bg-message);
     border-radius: 10px;
 }
 
@@ -71,10 +89,10 @@ body {
     border: none;
 }
 
-/* Inlet/Outlet specific styles */
+/* Inlet/Outlet Styles */
 .max-box.inlet, .max-box.outlet {
-    background-color: #333;
-    border: 1px solid #666;
+    background-color: var(--bg-box);
+    border: 1px solid var(--border-box);
     padding: 0;
     display: flex;
     flex-direction: column;
@@ -87,7 +105,7 @@ body {
     background-color: transparent;
     font-weight: bold;
     font-size: 8px;
-    color: #ccc;
+    color: var(--text-muted);
     line-height: 1;
     margin: 1px 0;
 }
@@ -97,7 +115,7 @@ body {
     height: 0;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
-    border-top: 4px solid #888;
+    border-top: 4px solid var(--io-color);
     margin: 1px 0;
 }
 
@@ -105,18 +123,14 @@ body {
     position: absolute;
     width: 8px;
     height: 4px;
-    background-color: #888;
+    background-color: var(--io-color);
     border-radius: 2px;
 }
 
-.inlet-point {
-    top: -2px;
-}
+.inlet-point { top: -2px; }
+.outlet-point { bottom: -2px; }
 
-.outlet-point {
-    bottom: -2px;
-}
-
+/* Patchlines */
 #patchline-svg {
     position: absolute;
     top: 0;
@@ -128,80 +142,54 @@ body {
 }
 
 .patchline {
-    stroke: #888;
+    stroke: var(--io-color);
     stroke-width: 2;
     fill: none;
     stroke-linecap: round;
 }
 
-.added {
-    border-color: #4caf50 !important;
-    color: #4caf50 !important;
-}
+/* Diff States */
+.added { border-color: var(--accent-added) !important; color: var(--accent-added) !important; }
+.removed { border-color: var(--accent-removed) !important; color: var(--accent-removed) !important; opacity: 0.6; stroke-dasharray: 5, 5; }
+.modified { border-color: var(--accent-modified) !important; color: var(--accent-modified) !important; }
+.moved { border-color: var(--accent-moved) !important; color: var(--accent-moved) !important; border-style: dashed !important; }
 
-.removed {
-    border-color: #f44336 !important;
-    color: #f44336 !important;
-    opacity: 0.6;
-    stroke-dasharray: 5, 5;
-}
+.patchline.added { stroke: var(--accent-added) !important; }
+.patchline.removed { stroke: var(--accent-removed) !important; stroke-dasharray: 5, 5; }
 
-.modified {
-    border-color: #ff9800 !important;
-    color: #ff9800 !important;
-}
-
-.patchline.added {
-    stroke: #4caf50 !important;
-}
-
-.patchline.removed {
-    stroke: #f44336 !important;
-    stroke-dasharray: 5, 5;
-}
-
-.moved {
-    border-color: #2196f3 !important;
-    color: #2196f3 !important;
-    border-style: dashed !important;
-}
-
-/* Diff text styles */
+/* Diff Text */
 .diff-text-container {
     display: flex;
     flex-direction: column;
-    align-items: center; /* Center diff text */
+    align-items: center;
     line-height: 1.2;
-    width: 100%; /* Ensure it takes full width for wrapping */
+    width: 100%;
 }
 
 .diff-old-text {
     text-decoration: line-through;
-    color: #f44336;
+    color: var(--accent-removed);
     font-size: 8px;
     opacity: 0.8;
     white-space: pre-wrap;
 }
 
 .diff-new-text {
-    color: #4caf50;
+    color: var(--accent-added);
     font-weight: bold;
     white-space: pre-wrap;
 }
 
-/* Box Content Styles */
+/* Box Content */
 .box-content {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     width: 100%;
-    pointer-events: none; /* Let clicks pass to box */
+    pointer-events: none;
 }
-.main-text {
-    font-weight: normal;
-    white-space: pre-wrap;
-}
+.main-text { font-weight: normal; white-space: pre-wrap; }
 .sub-text {
     font-size: 8px;
     opacity: 0.6;
@@ -210,7 +198,7 @@ body {
     white-space: pre-wrap;
 }
 
-/* Modal Styles */
+/* Modal */
 .modal {
     display: none;
     position: fixed;
@@ -224,12 +212,12 @@ body {
 }
 
 .modal-content {
-    background-color: #2b2b2b;
+    background-color: var(--bg-color);
     margin: 15% auto;
     padding: 20px;
-    border: 1px solid #888;
+    border: 1px solid var(--io-color);
     width: 50%;
-    color: #d4d4d4;
+    color: var(--text-color);
     border-radius: 5px;
     box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
 }
@@ -241,8 +229,7 @@ body {
     font-weight: bold;
 }
 
-.close-button:hover,
-.close-button:focus {
+.close-button:hover, .close-button:focus {
     color: white;
     text-decoration: none;
     cursor: pointer;
@@ -251,23 +238,12 @@ body {
 .attr-change {
     margin-bottom: 10px;
     padding: 5px;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid var(--border-color);
 }
 
-.attr-name {
-    font-weight: bold;
-    color: #ccc;
-}
-
-.attr-old {
-    color: #f44336;
-    text-decoration: line-through;
-    margin-right: 10px;
-}
-
-.attr-new {
-    color: #4caf50;
-}
+.attr-name { font-weight: bold; color: var(--text-muted); }
+.attr-old { color: var(--accent-removed); text-decoration: line-through; margin-right: 10px; }
+.attr-new { color: var(--accent-added); }
 
 /* Info Indicator */
 .info-indicator {
@@ -276,7 +252,7 @@ body {
     right: -8px;
     width: 16px;
     height: 16px;
-    background-color: #2196f3;
+    background-color: var(--accent-moved);
     color: white;
     border-radius: 50%;
     font-size: 8px;
@@ -288,7 +264,7 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-/* Sidebar Styles */
+/* Sidebar */
 .sidebar {
     height: 100%;
     width: 0;
@@ -296,25 +272,22 @@ body {
     z-index: 200;
     top: 0;
     right: 0;
-    background-color: #2b2b2b;
+    background-color: var(--bg-color);
     overflow-x: hidden;
     transition: 0.5s;
     padding-top: 60px;
-    border-left: 1px solid #444;
+    border-left: 1px solid var(--border-color);
     box-shadow: -2px 0 5px rgba(0,0,0,0.5);
 }
 
-.sidebar.open {
-    width: 350px; /* Increased width for better readability */
-    padding: 20px;
-}
+.sidebar.open { width: 350px; padding: 20px; }
 
 .sidebar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid var(--border-color);
     padding-bottom: 10px;
 }
 
@@ -326,19 +299,14 @@ body {
     cursor: pointer;
 }
 
-#btn-close-sidebar:hover {
-    color: #fff;
-}
+#btn-close-sidebar:hover { color: #fff; }
 
-#metadata-content {
-    font-size: 12px;
-    color: #ccc;
-}
+#metadata-content { font-size: 12px; color: var(--text-muted); }
 
 .meta-change {
     margin-bottom: 15px;
     padding-bottom: 10px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--bg-box);
 }
 
 .meta-key {
@@ -350,7 +318,7 @@ body {
 }
 
 .meta-old {
-    color: #f44336;
+    color: var(--accent-removed);
     text-decoration: line-through;
     font-size: 11px;
     display: block;
@@ -360,7 +328,7 @@ body {
 }
 
 .meta-new {
-    color: #4caf50;
+    color: var(--accent-added);
     font-size: 11px;
     display: block;
     white-space: pre-wrap;
