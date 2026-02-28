@@ -1,22 +1,17 @@
 import argparse
 import http.server
+import json
+import os
 import socketserver
 import threading
 import webbrowser
-import json
-import os
 from typing import Tuple, Optional, Any
 
 
 class DiffServer(socketserver.TCPServer):
-    def __init__(
-        self,
-        server_address: Tuple[str, int],
-        RequestHandlerClass: type[http.server.SimpleHTTPRequestHandler],
-        old_file: str,
-        new_file: str,
-        file_path: str,
-    ) -> None:
+    def __init__(self, server_address: Tuple[str, int],
+            RequestHandlerClass: type[http.server.SimpleHTTPRequestHandler],
+            old_file: str, new_file: str, file_path: str, ) -> None:
         super().__init__(server_address, RequestHandlerClass)
         self.old_file = old_file
         self.new_file = new_file
@@ -34,7 +29,7 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
         # Handle git's /dev/null for added/removed files
         if filepath == "/dev/null" or (os.name == "nt" and filepath.upper() == "NUL"):
             return None
-            
+
         if not os.path.exists(filepath):
             return None
 
@@ -58,12 +53,9 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 old_data = self.load_json_safe(self.server.old_file)
                 new_data = self.load_json_safe(self.server.new_file)
-                
-                data = {
-                    "old": old_data,
-                    "new": new_data,
-                    "filename": self.server.file_path,
-                }
+
+                data = {"old": old_data, "new": new_data,
+                    "filename": self.server.file_path, }
                 self.wfile.write(json.dumps(data).encode("utf-8"))
             except Exception as e:
                 # Fallback error handling
@@ -96,9 +88,8 @@ def main() -> None:
     parser.add_argument("new_mode", type=str, help="File mode of the new version")
     args = parser.parse_args()
 
-    with DiffServer(
-        ("", 0), DiffHandler, args.old_file, args.new_file, args.path
-    ) as httpd:
+    with DiffServer(("", 0), DiffHandler, args.old_file, args.new_file,
+            args.path) as httpd:
         port = httpd.server_address[1]
         print(f"Serving diff tool at http://localhost:{port}")
         print("Press Ctrl+C to stop manually.")
