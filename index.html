@@ -22,6 +22,7 @@
         <button id="btn-zoom-reset">100%</button>
         <button id="btn-zoom-in">+</button>
     </div>
+    <button id="btn-metadata" style="display: none;">Metadata Changes</button>
 </div>
 <div id="viewport">
     <div id="patcher-wrapper">
@@ -37,6 +38,14 @@
         <h3>Attribute Changes</h3>
         <div id="diff-content"></div>
     </div>
+</div>
+
+<div id="metadata-sidebar" class="sidebar">
+    <div class="sidebar-header">
+        <h3>Patch Metadata Changes</h3>
+        <button id="btn-close-sidebar">&times;</button>
+    </div>
+    <div id="metadata-content"></div>
 </div>
 
 <script src="app.js"></script>

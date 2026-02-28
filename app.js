@@ -22,6 +22,12 @@ const modal = document.getElementById("details-modal");
 const modalContent = document.getElementById("diff-content");
 const closeButton = document.querySelector(".close-button");
 
+// Sidebar elements
+const metadataSidebar = document.getElementById("metadata-sidebar");
+const metadataContent = document.getElementById("metadata-content");
+const btnMetadata = document.getElementById("btn-metadata");
+const btnCloseSidebar = document.getElementById("btn-close-sidebar");
+
 closeButton.addEventListener("click", () => {
     modal.style.display = "none";
 });
@@ -43,6 +49,15 @@ btnBack.addEventListener("click", () => {
     dataB = prevState.dataB;
     if (dataA || dataB) currentDiffData = comparePatches(dataA, dataB);
     updateView(document.querySelector("input[name=\"view\"]:checked").value);
+});
+
+// Sidebar controls
+btnMetadata.addEventListener("click", () => {
+    metadataSidebar.classList.toggle("open");
+});
+
+btnCloseSidebar.addEventListener("click", () => {
+    metadataSidebar.classList.remove("open");
 });
 
 function navigateToSubpatch(pA, pB) {
@@ -84,6 +99,20 @@ function handleDataUpdate() {
     if (dataA || dataB) {
         currentDiffData = comparePatches(dataA, dataB);
         viewToggles.style.display = "block";
+        
+        // Calculate metadata diffs
+        const metaDiffs = compareMetadata(dataA, dataB);
+        
+        btnMetadata.style.display = "inline-block";
+        renderMetadataDiffs(metaDiffs);
+        
+        if (metaDiffs.length > 0) {
+            btnMetadata.disabled = false;
+        } else {
+            btnMetadata.disabled = true;
+            metadataSidebar.classList.remove("open");
+        }
+
         const currentMode = document.querySelector('input[name="view"]:checked').value;
         updateView(currentMode);
     }
@@ -132,6 +161,86 @@ function handleFile(event, callback) {
 }
 
 checkLocalServer();
+
+function compareMetadata(dataA, dataB) {
+    if (!dataA || !dataB || !dataA.patcher || !dataB.patcher) return [];
+
+    const patcherA = dataA.patcher;
+    const patcherB = dataB.patcher;
+    const diffs = [];
+
+    const allKeys = new Set([...Object.keys(patcherA), ...Object.keys(patcherB)]);
+    const ignoredKeys = new Set(["boxes", "lines"]); // Ignore boxes/lines as they are visual.
+
+    for (const key of allKeys) {
+        if (ignoredKeys.has(key)) continue;
+
+        const valA = JSON.stringify(patcherA[key]);
+        const valB = JSON.stringify(patcherB[key]);
+
+        if (valA !== valB) {
+            // If the value is an object (and not an array), we can try to find deeper diffs
+            if (typeof patcherA[key] === 'object' && patcherA[key] !== null && !Array.isArray(patcherA[key]) &&
+                typeof patcherB[key] === 'object' && patcherB[key] !== null && !Array.isArray(patcherB[key])) {
+                 const subDiffs = compareObjectDeep(patcherA[key], patcherB[key], key);
+                 diffs.push(...subDiffs);
+            } else {
+                diffs.push({key, old: patcherA[key], new: patcherB[key]});
+            }
+        }
+    }
+    return diffs;
+}
+
+function compareObjectDeep(objA, objB, parentKey) {
+    const diffs = [];
+    const allKeys = new Set([...Object.keys(objA), ...Object.keys(objB)]);
+    
+    for (const key of allKeys) {
+        const valA = objA[key];
+        const valB = objB[key];
+        const currentKey = `${parentKey}.${key}`;
+        
+        const strA = JSON.stringify(valA);
+        const strB = JSON.stringify(valB);
+        
+        if (strA !== strB) {
+             if (typeof valA === 'object' && valA !== null && !Array.isArray(valA) &&
+                 typeof valB === 'object' && valB !== null && !Array.isArray(valB)) {
+                 // Recursive call for nested objects
+                 diffs.push(...compareObjectDeep(valA, valB, currentKey));
+             } else {
+                 diffs.push({key: currentKey, old: valA, new: valB});
+             }
+        }
+    }
+    return diffs;
+}
+
+function renderMetadataDiffs(diffs) {
+    metadataContent.innerHTML = "";
+    diffs.forEach(diff => {
+        const div = document.createElement("div");
+        div.className = "meta-change";
+
+        const keyDiv = document.createElement("div");
+        keyDiv.className = "meta-key";
+        keyDiv.textContent = diff.key;
+
+        const oldDiv = document.createElement("span");
+        oldDiv.className = "meta-old";
+        oldDiv.textContent = JSON.stringify(diff.old);
+
+        const newDiv = document.createElement("span");
+        newDiv.className = "meta-new";
+        newDiv.textContent = JSON.stringify(diff.new);
+
+        div.appendChild(keyDiv);
+        div.appendChild(oldDiv);
+        div.appendChild(newDiv);
+        metadataContent.appendChild(div);
+    });
+}
 
 function comparePatches(dataA, dataB) {
     const {boxes: boxesA, lines: linesA} = normalizePatchData(dataA);
