@@ -1,31 +1,10 @@
 import './components.js';
 import { DiffEngine } from './DiffEngine.js';
-import { PatcherRenderer } from './PatcherRenderer.js';
 
+/**
+ * Main application controller for the Max Patch Diff Tool.
+ */
 class PatcherApp {
-    #dom = {
-        container: document.getElementById("patcher-container"),
-        svgLayer: document.getElementById("patchline-svg"),
-        fileInputsDiv: document.getElementById("file-inputs"),
-        viewToggles: document.getElementById("view-toggles"),
-        wrapper: document.getElementById("patcher-wrapper"),
-        modal: document.getElementById("details-modal"),
-        modalContent: document.getElementById("diff-content"),
-        closeButton: document.querySelector(".close-button"),
-        metadataSidebar: document.getElementById("metadata-sidebar"),
-        metadataContent: document.getElementById("metadata-content"),
-        btnMetadata: document.getElementById("btn-metadata"),
-        btnCloseSidebar: document.getElementById("btn-close-sidebar"),
-        fileInputA: document.getElementById("fileInputA"),
-        fileInputB: document.getElementById("fileInputB"),
-        btnResetLayout: document.getElementById("btn-reset-layout"),
-        btnZoomIn: document.getElementById("btn-zoom-in"),
-        btnZoomOut: document.getElementById("btn-zoom-out"),
-        btnZoomReset: document.getElementById("btn-zoom-reset"),
-        controls: document.getElementById("controls"),
-        presentationToggle: document.getElementById("presentation-toggle")
-    };
-
     #state = {
         dataA: null,
         dataB: null,
@@ -34,232 +13,255 @@ class PatcherApp {
         navStack: []
     };
 
+    #elements = {
+        patcher: document.getElementById('patcher'),
+        wrapper: document.getElementById('patcher-wrapper'),
+        fileInputs: document.getElementById('file-inputs'),
+        viewToggles: document.getElementById('view-toggles'),
+        presentationToggle: document.getElementById('presentation-toggle'),
+        btnResetLayout: document.getElementById('btn-reset-layout'),
+        btnMetadata: document.getElementById('btn-metadata'),
+        modal: document.getElementById('details-modal'),
+        modalContent: document.getElementById('diff-content'),
+        closeModal: document.querySelector('.close-button'),
+        sidebar: document.getElementById('metadata-sidebar'),
+        sidebarContent: document.getElementById('metadata-content'),
+        closeSidebar: document.getElementById('btn-close-sidebar'),
+        btnZoomIn: document.getElementById('btn-zoom-in'),
+        btnZoomOut: document.getElementById('btn-zoom-out'),
+        btnZoomReset: document.getElementById('btn-zoom-reset'),
+        controls: document.getElementById('controls')
+    };
+
+    #btnBack = null;
+
     constructor() {
-        this.renderer = new PatcherRenderer(this.#dom.container, this.#dom.svgLayer);
-        this.btnBack = this.#createBackButton();
         this.#init();
     }
 
+    async #init() {
+        this.#btnBack = this.#createBackButton();
+        this.#setupEventListeners();
+        await this.#loadInitialData();
+    }
+
     #createBackButton() {
-        const btn = document.createElement("button");
-        Object.assign(btn, { id: "btn-back", textContent: "Back to Parent", style: "display: none;" });
-        this.#dom.controls.appendChild(btn);
+        const btn = document.createElement('button');
+        Object.assign(btn, { 
+            id: 'btn-back', 
+            textContent: 'Back to Parent', 
+            hidden: true 
+        });
+        this.#elements.controls.appendChild(btn);
         return btn;
     }
 
-    #init() {
-        this.#initEventListeners();
-        this.#checkLocalServer();
-    }
+    #setupEventListeners() {
+        const { 
+            presentationToggle, closeModal, modal, sidebar, 
+            closeSidebar, btnMetadata, btnResetLayout, 
+            btnZoomIn, btnZoomOut, btnZoomReset, wrapper,
+            patcher
+        } = this.#elements;
 
-    #initEventListeners() {
-        const d = this.#dom;
-        d.presentationToggle.addEventListener("change", () => this.updateView());
-        d.closeButton.addEventListener("click", () => d.modal.style.display = "none");
-        window.addEventListener("click", e => { if (e.target === d.modal) d.modal.style.display = "none"; });
-        window.addEventListener("pagehide", () => navigator.sendBeacon("/shutdown"));
+        presentationToggle.onchange = () => this.#updateView();
+        
+        const closeM = () => modal.style.display = 'none';
+        closeModal.onclick = closeM;
+        window.onclick = (e) => { if (e.target === modal) closeM(); };
 
-        this.btnBack.addEventListener("click", () => this.#navigateBack());
-        d.btnMetadata.addEventListener("click", () => d.metadataSidebar.classList.toggle("open"));
-        d.btnCloseSidebar.addEventListener("click", () => d.metadataSidebar.classList.remove("open"));
+        btnMetadata.onclick = () => sidebar.classList.toggle('open');
+        closeSidebar.onclick = () => sidebar.classList.remove('open');
 
         document.querySelectorAll('input[name="view"]').forEach(radio => {
-            radio.addEventListener("change", () => this.updateView());
+            radio.onchange = () => this.#updateView();
         });
 
-        const handleFile = (key) => (e) => {
+        const handleFile = (key) => async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (re) => {
-                this.#state[key] = JSON.parse(re.target.result);
-                this.#handleDataUpdate();
-            };
-            reader.readAsText(file);
+            this.#state[key] = JSON.parse(await file.text());
+            this.#onDataChanged();
         };
 
-        d.fileInputA.addEventListener("change", handleFile('dataA'));
-        d.fileInputB.addEventListener("change", handleFile('dataB'));
+        document.getElementById('fileInputA').onchange = handleFile('dataA');
+        document.getElementById('fileInputB').onchange = handleFile('dataB');
 
-        d.btnResetLayout.addEventListener("click", () => {
-            this.setZoom(1.0);
-            d.wrapper.scrollTo(0, 0);
-            d.modal.style.display = "none";
-            d.metadataSidebar.classList.remove("open");
-            this.#handleDataUpdate();
-        });
+        btnResetLayout.onclick = () => {
+            this.#setZoom(1.0);
+            wrapper.scrollTo(0, 0);
+            closeM();
+            sidebar.classList.remove('open');
+            this.#onDataChanged();
+        };
 
-        d.btnZoomIn.addEventListener("click", () => this.setZoom(this.#state.zoomLevel * 1.1));
-        d.btnZoomOut.addEventListener("click", () => this.setZoom(this.#state.zoomLevel / 1.1));
-        d.btnZoomReset.addEventListener("click", () => this.setZoom(1.0));
+        btnZoomIn.onclick = () => this.#setZoom(this.#state.zoomLevel * 1.1);
+        btnZoomOut.onclick = () => this.#setZoom(this.#state.zoomLevel / 1.1);
+        btnZoomReset.onclick = () => this.#setZoom(1.0);
 
-        d.wrapper.addEventListener("wheel", e => {
+        wrapper.onwheel = (e) => {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 const factor = e.deltaY > 0 ? 1 / 1.05 : 1.05;
-                this.setZoom(this.#state.zoomLevel * factor, { x: e.clientX, y: e.clientY });
+                this.#setZoom(this.#state.zoomLevel * factor, { x: e.clientX, y: e.clientY });
             }
-        }, { passive: false });
-    }
-
-    async #checkLocalServer() {
-        try {
-            const res = await fetch("/diff-data");
-            if (res.ok) {
-                const data = await res.json();
-                this.#dom.fileInputsDiv.style.display = "none";
-                if (data.filename) document.title = `Diff: ${data.filename}`;
-                [this.#state.dataA, this.#state.dataB] = [data.old, data.new];
-                this.#handleDataUpdate();
-            }
-        } catch (e) {}
-    }
-
-    #handleDataUpdate() {
-        if (!this.#state.dataA && !this.#state.dataB) return;
-        this.#state.currentDiffData = DiffEngine.compare(this.#state.dataA, this.#state.dataB);
-        this.#dom.viewToggles.style.display = "block";
-        this.#dom.btnMetadata.style.display = "inline-block";
-        this.updateView();
-    }
-
-    updateView() {
-        const mode = document.querySelector('input[name="view"]:checked')?.value || 'diff';
-        const isPres = this.#dom.presentationToggle.checked;
-        const cb = {
-            onShowDetails: (box) => this.#showDetails(box),
-            onNavigateToSubpatch: (pA, pB) => this.#navigateToSubpatch(pA, pB),
-            onMakeDraggable: (el, onDrag) => this.#makeDraggable(el, onDrag)
         };
 
-        let hasMeta = false;
-        if (mode === "before" && this.#state.dataA) {
-            const { boxes, lines } = DiffEngine.normalize(this.#state.dataA);
-            this.renderer.render(boxes, lines, false, isPres, cb);
-            const meta = DiffEngine.getMetadata(this.#state.dataA);
-            this.#renderSingleMeta(meta);
-            hasMeta = Object.keys(meta).length > 0;
-        } else if (mode === "after" && this.#state.dataB) {
-            const { boxes, lines } = DiffEngine.normalize(this.#state.dataB);
-            this.renderer.render(boxes, lines, false, isPres, cb);
-            const meta = DiffEngine.getMetadata(this.#state.dataB);
-            this.#renderSingleMeta(meta);
-            hasMeta = Object.keys(meta).length > 0;
-        } else if (mode === "diff" && this.#state.currentDiffData) {
-            this.renderer.render(this.#state.currentDiffData.boxes, this.#state.currentDiffData.lines, true, isPres, cb);
-            const diffs = DiffEngine.compareMetadata(this.#state.dataA, this.#state.dataB);
-            this.#renderMetaDiffs(diffs);
-            hasMeta = diffs.length > 0;
+        this.#btnBack.onclick = () => this.#navigateBack();
+
+        patcher.addEventListener('box-click', (e) => {
+            const { box, originalEvent } = e.detail;
+            const isIndicator = originalEvent.composedPath().some(el => el.classList?.contains('info-indicator'));
+            if (isIndicator) this.#handleBoxClick(box);
+        });
+        patcher.addEventListener('box-dblclick', (e) => {
+            const { box, originalEvent } = e.detail;
+            const isIndicator = originalEvent.composedPath().some(el => el.classList?.contains('info-indicator'));
+            if (!isIndicator) this.#handleBoxDblClick(box);
+        });
+
+        window.onpagehide = () => navigator.sendBeacon('/shutdown');
+    }
+
+    async #loadInitialData() {
+        try {
+            const res = await fetch('/diff-data');
+            if (res.ok) {
+                const data = await res.json();
+                this.#elements.fileInputs.hidden = true;
+                if (data.filename) document.title = `Diff: ${data.filename}`;
+                this.#state.dataA = data.old;
+                this.#state.dataB = data.new;
+                this.#onDataChanged();
+            }
+        } catch (e) {
+            console.warn('Local server not found, falling back to file inputs.');
+        }
+    }
+
+    #onDataChanged() {
+        if (!this.#state.dataA && !this.#state.dataB) return;
+        this.#state.currentDiffData = DiffEngine.compare(this.#state.dataA, this.#state.dataB);
+        this.#elements.viewToggles.style.display = 'block';
+        this.#elements.btnMetadata.style.display = 'inline-block';
+        this.#updateView();
+    }
+
+    #updateView() {
+        const mode = document.querySelector('input[name="view"]:checked')?.value ?? 'diff';
+        const isPres = this.#elements.presentationToggle.checked;
+        const patcher = this.#elements.patcher;
+
+        patcher.toggleAttribute('presentation', isPres);
+        patcher.toggleAttribute('diff', mode === 'diff');
+
+        let meta = {};
+        let metaDiffs = [];
+
+        if (mode === 'before' && this.#state.dataA) {
+            patcher.patchData = DiffEngine.normalize(this.#state.dataA);
+            meta = DiffEngine.getMetadata(this.#state.dataA);
+        } else if (mode === 'after' && this.#state.dataB) {
+            patcher.patchData = DiffEngine.normalize(this.#state.dataB);
+            meta = DiffEngine.getMetadata(this.#state.dataB);
+        } else if (mode === 'diff' && this.#state.currentDiffData) {
+            patcher.patchData = this.#state.currentDiffData;
+            metaDiffs = DiffEngine.compareMetadata(this.#state.dataA, this.#state.dataB);
         }
 
-        this.#dom.btnMetadata.disabled = !hasMeta;
-        if (!hasMeta) this.#dom.metadataSidebar.classList.remove("open");
+        this.#renderMetadata(meta, metaDiffs);
+    }
+
+    #handleBoxClick(box) {
+        if (box.diffState !== 'modified' || !box.attrDiffs?.length) return;
+        
+        this.#elements.modalContent.innerHTML = box.attrDiffs.map(d => {
+            if (d.key === 'saved_attribute_attributes') {
+                const oldA = d.old?.valueof ?? {}, newA = d.new?.valueof ?? {};
+                return [...new Set([...Object.keys(oldA), ...Object.keys(newA)])]
+                    .filter(k => JSON.stringify(oldA[k]) !== JSON.stringify(newA[k]))
+                    .map(k => this.#formatAttrChange(`saved_attribute_attributes -> ${k}`, oldA[k], newA[k]))
+                    .join('');
+            }
+            return this.#formatAttrChange(d.key, d.old, d.new);
+        }).join('');
+
+        if (this.#elements.modalContent.innerHTML) {
+            this.#elements.modal.style.display = 'block';
+        }
+    }
+
+    #formatAttrChange(key, oldV, newV) {
+        return `
+            <div class="attr-change">
+                <div class="attr-name">${key}</div>
+                <span class="attr-old">${JSON.stringify(oldV)}</span>
+                <span class="attr-new">${JSON.stringify(newV)}</span>
+            </div>
+        `;
+    }
+
+    #handleBoxDblClick(box) {
+        const mode = document.querySelector('input[name="view"]:checked')?.value ?? 'diff';
+        const pA = mode === 'before' ? box.patcher : (mode === 'diff' ? box.patcherA : null);
+        const pB = mode === 'after' ? box.patcher : (mode === 'diff' ? box.patcherB : null);
+        
+        if (pA || pB) {
+            this.#navigateToSubpatch(pA, pB);
+        }
     }
 
     #navigateToSubpatch(pA, pB) {
         this.#state.navStack.push({ dataA: this.#state.dataA, dataB: this.#state.dataB });
-        this.btnBack.style.display = "inline-block";
-        [this.#state.dataA, this.#state.dataB] = [pA ? { patcher: pA } : null, pB ? { patcher: pB } : null];
-        this.#handleDataUpdate();
+        this.#btnBack.hidden = false;
+        this.#state.dataA = pA ? { patcher: pA } : null;
+        this.#state.dataB = pB ? { patcher: pB } : null;
+        this.#onDataChanged();
     }
 
     #navigateBack() {
         const prevState = this.#state.navStack.pop();
-        if (this.#state.navStack.length === 0) this.btnBack.style.display = "none";
+        this.#btnBack.hidden = this.#state.navStack.length === 0;
         Object.assign(this.#state, prevState);
-        this.#handleDataUpdate();
+        this.#onDataChanged();
     }
 
-    #showDetails(box) {
-        this.#dom.modalContent.innerHTML = "";
-        if (box.diffState !== "modified" || !box.attrDiffs?.length) return;
+    #renderMetadata(meta, diffs) {
+        const content = diffs.length > 0
+            ? diffs.map(d => `
+                <div class="meta-change">
+                    <div class="meta-key">${d.key}</div>
+                    <pre class="meta-old">${JSON.stringify(d.old, null, 2)}</pre>
+                    <pre class="meta-new">${JSON.stringify(d.new, null, 2)}</pre>
+                </div>`).join('')
+            : Object.entries(meta).map(([k, v]) => `
+                <div class="meta-change">
+                    <div class="meta-key">${k}</div>
+                    <pre class="meta-new">${JSON.stringify(v, null, 2)}</pre>
+                </div>`).join('');
 
-        box.attrDiffs.forEach(d => {
-            if (d.key === "saved_attribute_attributes") {
-                const oldA = d.old?.valueof || {}, newA = d.new?.valueof || {};
-                [...new Set([...Object.keys(oldA), ...Object.keys(newA)])].forEach(k => {
-                    if (JSON.stringify(oldA[k]) !== JSON.stringify(newA[k])) {
-                        this.#createAttrChange(`saved_attribute_attributes -> ${k}`, JSON.stringify(oldA[k]), JSON.stringify(newA[k]));
-                    }
-                });
-            } else {
-                this.#createAttrChange(d.key, JSON.stringify(d.old), JSON.stringify(d.new));
-            }
-        });
-        if (this.#dom.modalContent.children.length) this.#dom.modal.style.display = "block";
+        this.#elements.sidebarContent.innerHTML = content;
+        const hasMeta = content.length > 0;
+        this.#elements.btnMetadata.disabled = !hasMeta;
+        if (!hasMeta) this.#elements.sidebar.classList.remove('open');
     }
 
-    #createAttrChange(key, oldV, newV) {
-        const div = document.createElement("div");
-        div.className = "attr-change";
-        div.innerHTML = `<div class="attr-name">${key}</div><span class="attr-old">${oldV}</span><span class="attr-new">${newV}</span>`;
-        this.#dom.modalContent.appendChild(div);
-    }
-
-    #renderMetaDiffs(diffs) {
-        this.#dom.metadataContent.innerHTML = diffs.map(d => `
-            <div class="meta-change"><div class="meta-key">${d.key}</div>
-                <pre class="meta-old">${JSON.stringify(d.old, null, 2)}</pre>
-                <pre class="meta-new">${JSON.stringify(d.new, null, 2)}</pre>
-            </div>`).join("");
-    }
-
-    #renderSingleMeta(meta) {
-        this.#dom.metadataContent.innerHTML = Object.entries(meta).map(([k, v]) => `
-            <div class="meta-change"><div class="meta-key">${k}</div>
-                <pre class="meta-new">${JSON.stringify(v, null, 2)}</pre>
-            </div>`).join("");
-    }
-
-    setZoom(level, pivot) {
+    #setZoom(level, pivot) {
         level = Math.max(0.2, Math.min(level, 3.0));
         if (level === this.#state.zoomLevel) return;
 
-        const w = this.#dom.wrapper;
-        const rect = w.getBoundingClientRect();
-        const px = pivot ? pivot.x - rect.left : w.clientWidth / 2;
-        const py = pivot ? pivot.y - rect.top : w.clientHeight / 2;
+        const { wrapper, patcher, btnZoomReset } = this.#elements;
+        const rect = wrapper.getBoundingClientRect();
+        const px = pivot ? pivot.x - rect.left : wrapper.clientWidth / 2;
+        const py = pivot ? pivot.y - rect.top : wrapper.clientHeight / 2;
 
         const ratio = level / this.#state.zoomLevel;
-        w.scrollLeft = (px + w.scrollLeft) * ratio - px;
-        w.scrollTop = (py + w.scrollTop) * ratio - py;
+        wrapper.scrollLeft = (px + wrapper.scrollLeft) * ratio - px;
+        wrapper.scrollTop = (py + wrapper.scrollTop) * ratio - py;
 
         this.#state.zoomLevel = level;
-        this.#dom.container.style.transform = `scale(${level})`;
-        this.#dom.btnZoomReset.textContent = `${Math.round(level * 100)}%`;
-    }
-
-    #makeDraggable(el, onDrag) {
-        let dragging = false, startX, startY, initialL, initialT, moved = false;
-
-        const onMove = e => {
-            if (!dragging) return;
-            const dx = (e.clientX - startX) / this.#state.zoomLevel, dy = (e.clientY - startY) / this.#state.zoomLevel;
-            if (dx === 0 && dy === 0) return;
-            moved = true;
-            const nx = initialL + dx, ny = initialT + dy;
-            el.style.left = `${nx}px`; el.style.top = `${ny}px`;
-            if (onDrag) onDrag(nx, ny);
-        };
-
-        const onUp = () => {
-            if (dragging) {
-                dragging = false;
-                if (moved) {
-                    el.dataset.dragged = "true";
-                    setTimeout(() => delete el.dataset.dragged, 0);
-                }
-                window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp);
-            }
-        };
-
-        el.addEventListener("mousedown", e => {
-            if (e.button !== 0) return;
-            dragging = true; moved = false;
-            startX = e.clientX; startY = e.clientY;
-            initialL = parseFloat(el.style.left); initialT = parseFloat(el.style.top);
-            window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
-        });
+        patcher.style.transform = `scale(${level})`;
+        btnZoomReset.textContent = `${Math.round(level * 100)}%`;
     }
 }
 

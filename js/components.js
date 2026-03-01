@@ -1,16 +1,82 @@
 
+const boxStyles = new CSSStyleSheet();
+boxStyles.replaceSync(`
+    :host {
+        position: absolute;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        cursor: pointer;
+        overflow: visible;
+        background-color: var(--bg-box, #333);
+        border: 1px solid var(--border-box, #666);
+        color: var(--text-muted, #ccc);
+        font-size: 10px;
+        font-family: "Lato", "Arial", sans-serif;
+        white-space: pre-wrap;
+        padding: 0 4px;
+        transition: border-color 0.2s, color 0.2s;
+    }
+    :host(:hover) { border-color: var(--border-hover, #999); }
+    :host(.added) { border-color: var(--accent-added, #4caf50) !important; color: var(--accent-added, #4caf50) !important; }
+    :host(.removed) { border-color: var(--accent-removed, #f44336) !important; color: var(--accent-removed, #f44336) !important; opacity: 0.6; }
+    :host(.modified) { border-color: var(--accent-modified, #ff9800) !important; color: var(--accent-modified, #ff9800) !important; }
+    :host(.moved) { border-color: var(--accent-moved, #2196f3) !important; color: var(--accent-moved, #2196f3) !important; border-style: dashed !important; }
+    
+    .inlet-point, .outlet-point {
+        position: absolute;
+        width: 8px;
+        height: 4px;
+        background-color: var(--io-color, #888);
+        border-radius: 2px;
+        transform: translateX(-50%);
+    }
+    .inlet-point { top: -2px; }
+    .outlet-point { bottom: -2px; }
+
+    .info-indicator {
+        position: absolute;
+        top: -8px; right: -8px;
+        width: 16px; height: 16px;
+        background-color: var(--accent-moved, #2196f3);
+        color: white;
+        border-radius: 50%;
+        font-size: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: bold;
+        z-index: 20;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        transition: transform 0.1s;
+    }
+    .info-indicator:hover {
+        transform: scale(1.2);
+        filter: brightness(1.1);
+    }
+
+    .box-content {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        width: 100%; height: 100%;
+        pointer-events: none;
+    }
+    .main-text { font-weight: normal; white-space: pre-wrap; text-align: center; }
+    .sub-text { font-size: 8px; opacity: 0.6; margin-top: 2px; font-style: italic; white-space: pre-wrap; }
+    .diff-text-container { display: flex; flex-direction: column; align-items: center; line-height: 1.2; width: 100%; }
+    .diff-old-text { text-decoration: line-through; color: var(--accent-removed, #f44336); font-size: 8px; opacity: 0.8; white-space: pre-wrap; }
+    .diff-new-text { color: var(--accent-added, #4caf50); font-weight: bold; white-space: pre-wrap; }
+`);
+
+/**
+ * Base class for all Max objects.
+ */
 export class MaxBox extends HTMLElement {
     #data = null;
-    static #baseStyleSheet = null;
 
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
-        if (!MaxBox.#baseStyleSheet) {
-            MaxBox.#baseStyleSheet = new CSSStyleSheet();
-            MaxBox.#baseStyleSheet.replaceSync(this.getBaseStyles());
-        }
-        this.shadowRoot.adoptedStyleSheets = [MaxBox.#baseStyleSheet];
+        this.shadowRoot.adoptedStyleSheets = [boxStyles];
     }
 
     static get observedAttributes() { return ['presentation']; }
@@ -33,6 +99,7 @@ export class MaxBox extends HTMLElement {
             ? this.#data.presentation_rect 
             : this.#data.patching_rect;
         if (!rect) return;
+        
         const [x, y, w, h] = rect;
         Object.assign(this.style, {
             left: `${x}px`,
@@ -44,11 +111,15 @@ export class MaxBox extends HTMLElement {
 
     getDisplayName() {
         const box = this.#data;
-        const attrs = box.saved_attribute_attributes?.valueof || {};
-        const pretty = attrs.parameter_longname || attrs.parameter_shortname;
-        const basic = box.text || box.maxclass;
-        const main = (box.maxclass === "bpatcher" && box.name) ? `${pretty || basic} ${box.name}` : (pretty || basic);
+        const attrs = box.saved_attribute_attributes?.valueof ?? {};
+        const pretty = attrs.parameter_longname ?? attrs.parameter_shortname;
+        const basic = box.text ?? box.maxclass;
+        
+        const main = (box.maxclass === "bpatcher" && box.name) 
+            ? `${pretty ?? basic} ${box.name}` 
+            : (pretty ?? basic);
         const sub = (pretty && pretty !== basic) ? basic : null;
+        
         return { main, sub };
     }
 
@@ -56,90 +127,25 @@ export class MaxBox extends HTMLElement {
         const { numinlets = 1, numoutlets = 1 } = this.#data;
         const createPoints = (num, className) => Array.from({ length: num }, (_, i) => {
             const left = `${(100 / (num + 1)) * (i + 1)}%`;
-            return `<div class="${className}" part="${className}" style="left: ${left}"></div>`;
+            return `<div class="${className}" style="left: ${left}"></div>`;
         }).join('');
         return createPoints(numinlets, 'inlet-point') + createPoints(numoutlets, 'outlet-point');
     }
-
-    getBaseStyles() {
-        return `
-            :host {
-                position: absolute;
-                box-sizing: border-box;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 10;
-                cursor: pointer;
-                overflow: visible;
-                background-color: var(--bg-box, #333);
-                border: 1px solid var(--border-box, #666);
-                color: var(--text-muted, #ccc);
-                font-size: 10px;
-                font-family: "Lato", "Arial", sans-serif;
-                white-space: pre-wrap;
-                padding: 0 4px;
-            }
-            :host(:hover) { border-color: var(--border-hover, #999); }
-            :host(.added) { border-color: var(--accent-added, #4caf50) !important; color: var(--accent-added, #4caf50) !important; }
-            :host(.removed) { border-color: var(--accent-removed, #f44336) !important; color: var(--accent-removed, #f44336) !important; opacity: 0.6; }
-            :host(.modified) { border-color: var(--accent-modified, #ff9800) !important; color: var(--accent-modified, #ff9800) !important; }
-            :host(.moved) { border-color: var(--accent-moved, #2196f3) !important; color: var(--accent-moved, #2196f3) !important; border-style: dashed !important; }
-            
-            .inlet-point, .outlet-point {
-                position: absolute;
-                width: 8px;
-                height: 4px;
-                background-color: var(--io-color, #888);
-                border-radius: 2px;
-                transform: translateX(-50%);
-            }
-            .inlet-point { top: -2px; }
-            .outlet-point { bottom: -2px; }
-
-            .info-indicator {
-                position: absolute;
-                top: -8px; right: -8px;
-                width: 16px; height: 16px;
-                background-color: var(--accent-moved, #2196f3);
-                color: white;
-                border-radius: 50%;
-                font-size: 8px;
-                display: flex; align-items: center; justify-content: center;
-                font-weight: bold;
-                z-index: 20;
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-            }
-
-            .box-content {
-                display: flex; flex-direction: column; align-items: center; justify-content: center;
-                width: 100%; height: 100%;
-                pointer-events: none;
-            }
-            .main-text { font-weight: normal; white-space: pre-wrap; }
-            .sub-text { font-size: 8px; opacity: 0.6; margin-top: 2px; font-style: italic; white-space: pre-wrap; }
-            .diff-text-container { display: flex; flex-direction: column; align-items: center; line-height: 1.2; width: 100%; }
-            .diff-old-text { text-decoration: line-through; color: var(--accent-removed, #f44336); font-size: 8px; opacity: 0.8; white-space: pre-wrap; }
-            .diff-new-text { color: var(--accent-added, #4caf50); font-weight: bold; white-space: pre-wrap; }
-        `;
-    }
-
-    getStyles() { return ''; }
 
     getContent() {
         const { main, sub } = this.getDisplayName();
         const { diffState, oldText, text, maxclass } = this.#data;
         const isModified = diffState === "modified";
         
-        let contentHtml = (isModified && oldText && oldText !== (text || maxclass) && !sub) 
-            ? `<div class="diff-text-container" part="diff-container">
-                    <div class="diff-old-text" part="diff-old-text">${oldText}</div>
-                    <div class="diff-new-text" part="diff-new-text">${main}</div>
+        let contentHtml = (isModified && oldText && oldText !== (text ?? maxclass) && !sub) 
+            ? `<div class="diff-text-container">
+                    <div class="diff-old-text">${oldText}</div>
+                    <div class="diff-new-text">${main}</div>
                </div>`
-            : `<span class="main-text" part="main-text">${main}</span>`;
+            : `<span class="main-text">${main}</span>`;
 
-        if (sub) contentHtml += `<span class="sub-text" part="sub-text">(${sub})</span>`;
-        return `<div class="box-content" part="content">${contentHtml}</div>`;
+        if (sub) contentHtml += `<span class="sub-text">(${sub})</span>`;
+        return `<div class="box-content">${contentHtml}</div>`;
     }
 
     render() {
@@ -149,14 +155,13 @@ export class MaxBox extends HTMLElement {
 
         this.className = `max-box ${maxclass} ${diffState}`;
 
-        const extraStyles = new CSSStyleSheet();
-        let styles = this.getStyles();
-        if (hasSubpatch) styles += `:host { border-style: double !important; border-width: 3px !important; }`;
-        extraStyles.replaceSync(styles);
-        this.shadowRoot.adoptedStyleSheets = [MaxBox.#baseStyleSheet, extraStyles];
+        if (hasSubpatch) {
+            this.style.borderStyle = 'double';
+            this.style.borderWidth = '3px';
+        }
 
         const indicator = (diffState === 'modified' && attrDiffs?.length > 0) 
-            ? `<div class="info-indicator" part="info-indicator">i</div>` 
+            ? `<div class="info-indicator">i</div>` 
             : '';
 
         this.shadowRoot.innerHTML = `${this.getContent()}${this.getInletsOutlets()}${indicator}`;
@@ -164,16 +169,29 @@ export class MaxBox extends HTMLElement {
 }
 
 export class MaxMessage extends MaxBox {
-    getStyles() { return `:host { background-color: var(--bg-message, #555); border-radius: 10px; }`; }
+    constructor() {
+        super();
+        const style = new CSSStyleSheet();
+        style.replaceSync(`:host { background-color: var(--bg-message, #555); border-radius: 10px; }`);
+        this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, style];
+    }
 }
 
 export class MaxComment extends MaxBox {
-    getStyles() { return `:host { background-color: transparent; border: none; }`; }
+    constructor() {
+        super();
+        const style = new CSSStyleSheet();
+        style.replaceSync(`:host { background-color: transparent; border: none; }`);
+        this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, style];
+    }
 }
 
 export class MaxButton extends MaxBox {
-    getStyles() {
-        return `:host { padding: 0; }
+    constructor() {
+        super();
+        const style = new CSSStyleSheet();
+        style.replaceSync(`
+            :host { padding: 0; }
             .bang-circle {
                 width: 80%; height: 80%;
                 border-radius: 50%;
@@ -183,31 +201,256 @@ export class MaxButton extends MaxBox {
             }
             :host(.added) .bang-circle { border-color: var(--accent-added, #4caf50); }
             :host(.removed) .bang-circle { border-color: var(--accent-removed, #f44336); }
-            :host(.modified) .bang-circle { border-color: var(--accent-modified, #ff9800); }`;
+            :host(.modified) .bang-circle { border-color: var(--accent-modified, #ff9800); }
+        `);
+        this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, style];
     }
-    getContent() { return `<div class="bang-circle" part="bang-circle"></div>`; }
+    getContent() { return `<div class="bang-circle"></div>`; }
 }
 
 export class MaxIO extends MaxBox {
-    getStyles() {
-        return `:host { padding: 0; min-width: 20px; min-height: 20px; background-color: var(--bg-box, #333); border: 1px solid var(--border-box, #666); }
+    constructor() {
+        super();
+        const style = new CSSStyleSheet();
+        style.replaceSync(`
+            :host { padding: 0; min-width: 20px; min-height: 20px; }
             .io-number { border: none; background-color: transparent; font-weight: bold; font-size: 8px; color: var(--text-muted, #ccc); line-height: 1; margin: 1px 0; }
-            .io-triangle { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid var(--io-color, #888); margin: 2px 0; }`;
+            .io-triangle { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid var(--io-color, #888); margin: 2px 0; }
+        `);
+        this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, style];
     }
     getContent() {
         const b = this.data;
-        const num = `<div class="io-number" part="io-number">${b.index || 1}</div>`;
-        const tri = `<div class="io-triangle" part="io-triangle"></div>`;
-        return `<div class="box-content" part="content">${b.maxclass === "inlet" ? num + tri : tri + num}</div>`;
+        const num = `<div class="io-number">${b.index ?? 1}</div>`;
+        const tri = `<div class="io-triangle"></div>`;
+        return `<div class="box-content">${b.maxclass === "inlet" ? num + tri : tri + num}</div>`;
     }
-}
-
-export class MaxPanel extends MaxBox {
-    getStyles() { return `:host { z-index: 5; }`; }
 }
 
 export class MaxInlet extends MaxIO {}
 export class MaxOutlet extends MaxIO {}
+
+export class MaxPanel extends MaxBox {
+    constructor() {
+        super();
+        const style = new CSSStyleSheet();
+        style.replaceSync(`:host { z-index: 5; }`);
+        this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, style];
+    }
+}
+
+/**
+ * Main patcher component that renders boxes and lines.
+ */
+export class MaxPatcher extends HTMLElement {
+    #boxes = [];
+    #lines = [];
+    #isDiff = false;
+    #isPresentation = false;
+    #boxMap = new Map();
+
+    static get observedAttributes() { return ['presentation', 'diff']; }
+
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
+        const style = new CSSStyleSheet();
+        style.replaceSync(`
+            :host {
+                display: block;
+                position: relative;
+                transform-origin: top left;
+                width: 100%;
+                height: 100%;
+            }
+            #svg-layer {
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                z-index: 7;
+                width: 100%;
+                height: 100%;
+            }
+            .patchline {
+                stroke: var(--io-color, #888);
+                stroke-width: 2;
+                fill: none;
+                stroke-linecap: round;
+            }
+            .patchline.added { stroke: var(--accent-added, #4caf50); }
+            .patchline.removed { stroke: var(--accent-removed, #f44336); stroke-dasharray: 5, 5; }
+            .patchline.modified { stroke: var(--accent-modified, #ff9800); }
+            .patchline.moved { stroke: var(--accent-moved, #2196f3); stroke-dasharray: 2, 2; }
+        `);
+        this.shadowRoot.adoptedStyleSheets = [style];
+        this.shadowRoot.innerHTML = `
+            <div id="container"></div>
+            <svg id="svg-layer"></svg>
+        `;
+        this.container = this.shadowRoot.getElementById('container');
+        this.svgLayer = this.shadowRoot.getElementById('svg-layer');
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (oldValue === newValue) return;
+        if (name === 'presentation') {
+            this.#isPresentation = newValue !== null;
+            this.render();
+        } else if (name === 'diff') {
+            this.#isDiff = newValue !== null;
+            this.render();
+        }
+    }
+
+    set patchData({ boxes, lines }) {
+        this.#boxes = boxes;
+        this.#lines = lines;
+        this.render();
+    }
+
+    render() {
+        this.container.innerHTML = '';
+        this.svgLayer.innerHTML = '';
+        this.#boxMap.clear();
+
+        let maxX = 0, maxY = 0;
+
+        const visibleBoxes = this.#boxes.filter(b => !this.#isPresentation || b.presentation);
+        
+        for (const box of visibleBoxes) {
+            this.#boxMap.set(box.id, box);
+            const rect = (this.#isPresentation && box.presentation_rect) ? box.presentation_rect : box.patching_rect;
+            if (!rect) continue;
+            
+            maxX = Math.max(maxX, rect[0] + rect[2]);
+            maxY = Math.max(maxY, rect[1] + rect[3]);
+
+            const el = this.createBoxElement(box);
+            this.container.appendChild(el);
+        }
+
+        this.style.width = `${maxX + 200}px`;
+        this.style.height = `${maxY + 200}px`;
+
+        this.updateLines();
+    }
+
+    updateLines() {
+        this.svgLayer.innerHTML = '';
+        for (const line of this.#lines) {
+            const src = this.#boxMap.get(line.source[0]);
+            const dst = this.#boxMap.get(line.destination[0]);
+            if (src && dst) {
+                const path = this.createConnectionPath(src, dst, line);
+                if (this.#isDiff && line.diffState) {
+                    path.classList.add(line.diffState);
+                }
+                this.svgLayer.appendChild(path);
+            }
+        }
+    }
+
+    createBoxElement(box) {
+        const tag = {
+            message: 'max-message',
+            comment: 'max-comment',
+            button: 'max-button',
+            inlet: 'max-inlet',
+            outlet: 'max-outlet',
+            panel: 'max-panel'
+        }[box.maxclass] ?? 'max-box';
+
+        const el = document.createElement(tag);
+        if (this.#isPresentation) el.setAttribute('presentation', '');
+        el.data = box;
+
+        el.addEventListener('click', (e) => {
+            if (el.dataset.dragged) return;
+            this.dispatchEvent(new CustomEvent('box-click', { 
+                detail: { box, originalEvent: e },
+                bubbles: true,
+                composed: true
+            }));
+        });
+
+        el.addEventListener('dblclick', (e) => {
+            this.dispatchEvent(new CustomEvent('box-dblclick', { 
+                detail: { box, originalEvent: e },
+                bubbles: true,
+                composed: true
+            }));
+        });
+
+        this.makeDraggable(el, box);
+
+        return el;
+    }
+
+    makeDraggable(el, box) {
+        let startX, startY, initialPos;
+        
+        const onMouseMove = (e) => {
+            const dx = (e.clientX - startX) / (this.zoomLevel ?? 1);
+            const dy = (e.clientY - startY) / (this.zoomLevel ?? 1);
+            if (dx === 0 && dy === 0) return;
+            
+            el.dataset.dragged = "true";
+            const nx = initialPos.x + dx;
+            const ny = initialPos.y + dy;
+            
+            const rectProp = this.#isPresentation && box.presentation_rect ? 'presentation_rect' : 'patching_rect';
+            if (!box[rectProp]) box[rectProp] = [0, 0, 0, 0];
+            [box[rectProp][0], box[rectProp][1]] = [nx, ny];
+            
+            el.style.left = `${nx}px`;
+            el.style.top = `${ny}px`;
+            this.updateLines();
+        };
+
+        const onMouseUp = () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            setTimeout(() => delete el.dataset.dragged, 0);
+        };
+
+        el.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialPos = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            e.stopPropagation();
+        });
+    }
+
+    get zoomLevel() {
+        // Find zoom level from own scale
+        const matrix = new DOMMatrix(getComputedStyle(this).transform);
+        return matrix.a || 1;
+    }
+
+    createConnectionPath(src, dst, line) {
+        const sR = (this.#isPresentation && src.presentation_rect) ? src.presentation_rect : src.patching_rect;
+        const dR = (this.#isPresentation && dst.presentation_rect) ? dst.presentation_rect : dst.patching_rect;
+        
+        const sX = sR[0] + (sR[2] / ((src.numoutlets ?? 1) + 1)) * (line.source[1] + 1);
+        const sY = sR[1] + sR[3];
+        const dX = dR[0] + (dR[2] / ((dst.numinlets ?? 1) + 1)) * (line.destination[1] + 1);
+        const dY = dR[1];
+        
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", "patchline");
+        const off = Math.max(20, Math.abs(dY - sY) * 0.4);
+        path.setAttribute("d", `M ${sX} ${sY} C ${sX} ${sY + off}, ${dX} ${dY - off}, ${dX} ${dY}`);
+        
+        // Add data attributes for identification
+        path.dataset.src = line.source[0];
+        path.dataset.dst = line.destination[0];
+        
+        return path;
+    }
+}
 
 const elements = {
     'max-box': MaxBox,
@@ -216,7 +459,8 @@ const elements = {
     'max-button': MaxButton,
     'max-inlet': MaxInlet,
     'max-outlet': MaxOutlet,
-    'max-panel': MaxPanel
+    'max-panel': MaxPanel,
+    'max-patcher': MaxPatcher
 };
 
 for (const [name, constructor] of Object.entries(elements)) {
