@@ -32,7 +32,13 @@ boxStyles.replaceSync(`
         background-color: var(--io-color, #888);
         border-radius: 2px;
         transform: translateX(-50%);
+        z-index: 15;
     }
+    .inlet-point.added, .outlet-point.added { background-color: var(--accent-added, #4caf50) !important; }
+    .inlet-point.removed, .outlet-point.removed { background-color: var(--accent-removed, #f44336) !important; opacity: 0.4; z-index: 14; }
+    :host(.added) .inlet-point, :host(.added) .outlet-point { background-color: var(--accent-added, #4caf50); }
+    :host(.removed) .inlet-point, :host(.removed) .outlet-point { background-color: var(--accent-removed, #f44336); }
+    
     .inlet-point { top: -2px; }
     .outlet-point { bottom: -2px; }
 
@@ -124,12 +130,31 @@ export class MaxBox extends HTMLElement {
     }
 
     getInletsOutlets() {
-        const { numinlets = 1, numoutlets = 1 } = this.#data;
-        const createPoints = (num, className) => Array.from({ length: num }, (_, i) => {
+        const { numinlets = 1, numoutlets = 1, attrDiffs = [], diffState } = this.#data;
+        const createPoints = (num, className, stateClass = '') => Array.from({ length: num }, (_, i) => {
             const left = `${(100 / (num + 1)) * (i + 1)}%`;
-            return `<div class="${className}" style="left: ${left}"></div>`;
+            return `<div class="${className} ${stateClass}" style="left: ${left}"></div>`;
         }).join('');
-        return createPoints(numinlets, 'inlet-point') + createPoints(numoutlets, 'outlet-point');
+
+        let inletsHtml = '';
+        const inletDiff = diffState === 'modified' ? attrDiffs.find(d => d.key === 'numinlets') : null;
+        if (inletDiff) {
+            inletsHtml = createPoints(inletDiff.old ?? 1, 'inlet-point', 'removed') + 
+                         createPoints(inletDiff.new ?? 1, 'inlet-point', 'added');
+        } else {
+            inletsHtml = createPoints(numinlets, 'inlet-point');
+        }
+
+        let outletsHtml = '';
+        const outletDiff = diffState === 'modified' ? attrDiffs.find(d => d.key === 'numoutlets') : null;
+        if (outletDiff) {
+            outletsHtml = createPoints(outletDiff.old ?? 1, 'outlet-point', 'removed') + 
+                          createPoints(outletDiff.new ?? 1, 'outlet-point', 'added');
+        } else {
+            outletsHtml = createPoints(numoutlets, 'outlet-point');
+        }
+
+        return inletsHtml + outletsHtml;
     }
 
     getContent() {

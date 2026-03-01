@@ -10,7 +10,12 @@ export class DiffEngine {
     static normalize(data) {
         const patcher = data?.patcher ?? {};
         return {
-            boxes: (patcher.boxes ?? []).map(item => structuredClone(item.box)),
+            boxes: (patcher.boxes ?? []).map(item => {
+                const box = structuredClone(item.box);
+                if (box.numinlets === undefined) box.numinlets = 1;
+                if (box.numoutlets === undefined) box.numoutlets = 1;
+                return box;
+            }),
             lines: (patcher.lines ?? []).map(item => structuredClone(item.patchline))
         };
     }
