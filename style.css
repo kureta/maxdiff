@@ -89,6 +89,33 @@ body {
     border: none;
 }
 
+.max-box.button {
+    padding: 0;
+    justify-content: center;
+    align-items: center;
+}
+
+.bang-circle {
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-box);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.max-box.added .bang-circle {
+    border-color: var(--accent-added);
+}
+
+.max-box.removed .bang-circle {
+    border-color: var(--accent-removed);
+}
+
+.max-box.modified .bang-circle {
+    border-color: var(--accent-modified);
+}
+
 /* Inlet/Outlet Styles */
 .max-box.inlet, .max-box.outlet {
     background-color: var(--bg-box);

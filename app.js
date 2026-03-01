@@ -460,13 +460,14 @@ function createBoxElement(box, isDiff, lines, boxDict, isPresentation) {
 
     if (box.maxclass === "inlet" || box.maxclass === "outlet") {
         renderIO(el, box);
+    } else if (box.maxclass === "button") {
+        renderButton(el, box);
     } else {
         renderBoxContent(el, box, isDiff);
     }
 
     renderInletsOutlets(el, box);
 
-    const hasSubpatch = isDiff ? (box.patcherA || box.patcherB) : box.patcher;
     if (hasSubpatch) {
         el.style.borderStyle = "double";
         el.style.borderWidth = "3px";
@@ -533,6 +534,12 @@ function renderIO(el, b) {
         el.appendChild(triDiv);
         el.appendChild(numDiv);
     }
+}
+
+function renderButton(el, b) {
+    const circle = document.createElement("div");
+    circle.className = "bang-circle";
+    el.appendChild(circle);
 }
 
 function renderBoxContent(el, b, isDiff) {
