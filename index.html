@@ -17,13 +17,17 @@
         <label><input name="view" type="radio" value="after"> After</label>
         <label><input checked name="view" type="radio" value="diff"> Diff</label>
     </div>
+    <div style="display: flex; align-items: center;">
+        <input type="checkbox" id="presentation-toggle" style="margin-right: 5px;">
+        <label for="presentation-toggle">Presentation View</label>
+    </div>
     <div id="zoom-controls">
         <button id="btn-zoom-out">-</button>
         <button id="btn-zoom-reset">100%</button>
         <button id="btn-zoom-in">+</button>
     </div>
     <button id="btn-reset-layout">Reset Layout</button>
-    <button id="btn-metadata" style="display: none;">Metadata Changes</button>
+    <button id="btn-metadata" style="display: none;">Metadata</button>
 </div>
 <div id="viewport">
     <div id="patcher-wrapper">
@@ -43,7 +47,7 @@
 
 <div class="sidebar" id="metadata-sidebar">
     <div class="sidebar-header">
-        <h3>Patch Metadata Changes</h3>
+        <h3>Patch Metadata</h3>
         <button id="btn-close-sidebar">&times;</button>
     </div>
     <div id="metadata-content"></div>

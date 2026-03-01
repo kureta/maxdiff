@@ -20,6 +20,7 @@ const DOM = {
     btnZoomReset: document.getElementById("btn-zoom-reset"),
     controls: document.getElementById("controls"),
     viewModeRadios: document.querySelectorAll('input[name="view"]'),
+    presentationToggle: document.getElementById("presentation-toggle"),
 };
 
 const svgNS = "http://www.w3.org/2000/svg";
@@ -40,6 +41,10 @@ DOM.controls.appendChild(btnBack);
 
 // --- Event Listeners ---
 function initEventListeners() {
+    DOM.presentationToggle.addEventListener("change", () => {
+        updateView(document.querySelector("input[name='view']:checked").value);
+    });
+
     DOM.closeButton.addEventListener("click", () => DOM.modal.style.display = "none");
 
     window.addEventListener("click", (event) => {
@@ -90,6 +95,7 @@ function initEventListeners() {
 }
 
 // --- Core Logic ---
+
 function navigateToSubpatch(pA, pB) {
     navStack.push({dataA, dataB});
     btnBack.style.display = "inline-block";
@@ -110,23 +116,24 @@ function normalizePatchData(data) {
 }
 
 function updateView(mode) {
+    const isPresentation = DOM.presentationToggle.checked;
     let hasMetadata = false;
     DOM.metadataContent.innerHTML = "";
 
     if (mode === "before" && dataA) {
         const {boxes, lines} = normalizePatchData(dataA);
-        render(boxes, lines, false);
+        render(boxes, lines, false, isPresentation);
         const metadata = getPatcherMetadata(dataA);
         renderSingleMetadata(metadata);
         hasMetadata = Object.keys(metadata).length > 0;
     } else if (mode === "after" && dataB) {
         const {boxes, lines} = normalizePatchData(dataB);
-        render(boxes, lines, false);
+        render(boxes, lines, false, isPresentation);
         const metadata = getPatcherMetadata(dataB);
         renderSingleMetadata(metadata);
         hasMetadata = Object.keys(metadata).length > 0;
     } else if (mode === "diff" && currentDiffData) {
-        render(currentDiffData.boxes, currentDiffData.lines, true);
+        render(currentDiffData.boxes, currentDiffData.lines, true, isPresentation);
         const metaDiffs = compareMetadata(dataA, dataB);
         renderMetadataDiffs(metaDiffs);
         hasMetadata = metaDiffs.length > 0;
@@ -174,6 +181,7 @@ function handleFile(event, callback) {
 }
 
 // --- Comparison Logic ---
+
 function compareMetadata(dataA, dataB) {
     if (!dataA || !dataB || !dataA.patcher || !dataB.patcher) return [];
 
@@ -245,7 +253,7 @@ function comparePatches(dataA, dataB) {
 
             const attrDiffs = [];
             const allKeys = new Set([...Object.keys(boxA), ...Object.keys(boxB)]);
-            const ignoredKeys = new Set(["id", "patching_rect", "text", "maxclass", "numinlets", "numoutlets", "patcher", "outlettype"]);
+            const ignoredKeys = new Set(["id", "patching_rect", "text", "maxclass", "numinlets", "numoutlets", "patcher", "outlettype", "presentation", "presentation_rect"]);
 
             for (const key of allKeys) {
                 if (ignoredKeys.has(key)) continue;
@@ -254,7 +262,7 @@ function comparePatches(dataA, dataB) {
                 }
             }
 
-            const isContentModified = textA !== textB || patcherAStr !== patcherBStr || wA !== wB || hA !== hB || attrDiffs.length > 0;
+            const isContentModified = textA !== textB || patcherAStr !== patcherBStr || wA !== wB || hA !== hB || attrDiffs.length > 0 || boxA.presentation !== boxB.presentation || JSON.stringify(boxA.presentation_rect) !== JSON.stringify(boxB.presentation_rect);
             const isPositionModified = xA !== xB || yA !== yB;
 
             let diffState = "unchanged";
@@ -294,6 +302,7 @@ function comparePatches(dataA, dataB) {
 }
 
 // --- Rendering Logic ---
+
 function getPatcherMetadata(data) {
     if (!data || !data.patcher) return {};
     const {boxes, lines, ...metadata} = data.patcher;
@@ -404,10 +413,11 @@ function applySpecialStyle(box, element) {
     if (box.maxclass === "panel") element.style.zIndex = 5;
 }
 
-function createBoxElement(box, isDiff, lines, boxDict) {
+function createBoxElement(box, isDiff, lines, boxDict, isPresentation) {
     const el = document.createElement("div");
     el.className = `max-box ${box.maxclass || ""} ${isDiff ? (box.diffState || "") : ""}`;
-    const [x, y, w, h] = box.patching_rect;
+    const rect = isPresentation && box.presentation_rect ? box.presentation_rect : box.patching_rect;
+    const [x, y, w, h] = rect;
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;
     el.style.width = `${w}px`;
@@ -429,9 +439,11 @@ function createBoxElement(box, isDiff, lines, boxDict) {
     });
 
     makeDraggable(el, (newX, newY) => {
-        box.patching_rect[0] = newX;
-        box.patching_rect[1] = newY;
-        updateConnectedLines(box, lines, boxDict);
+        const rectProp = isPresentation && box.presentation_rect ? 'presentation_rect' : 'patching_rect';
+        if (!box[rectProp]) box[rectProp] = [0, 0, w, h];
+        box[rectProp][0] = newX;
+        box[rectProp][1] = newY;
+        updateConnectedLines(box, lines, boxDict, isPresentation);
     });
 
     if (box.maxclass === "inlet" || box.maxclass === "outlet") {
@@ -455,19 +467,22 @@ function createBoxElement(box, isDiff, lines, boxDict) {
     return el;
 }
 
-function render(boxes, lines, isDiff) {
+function render(boxes, lines, isDiff, isPresentation) {
     Array.from(DOM.container.getElementsByClassName("max-box")).forEach(el => el.remove());
     DOM.svgLayer.innerHTML = "";
+
+    const visibleBoxes = isPresentation ? boxes.filter(b => b.presentation) : boxes;
 
     const boxDict = new Map();
     let maxX = 0, maxY = 0;
 
-    boxes.forEach(b => {
+    visibleBoxes.forEach(b => {
         boxDict.set(b.id, b);
-        const [x, y, w, h] = b.patching_rect;
+        const rect = isPresentation && b.presentation_rect ? b.presentation_rect : b.patching_rect;
+        const [x, y, w, h] = rect;
         maxX = Math.max(maxX, x + w);
         maxY = Math.max(maxY, y + h);
-        const el = createBoxElement(b, isDiff, lines, boxDict);
+        const el = createBoxElement(b, isDiff, lines, boxDict, isPresentation);
         DOM.container.appendChild(el);
     });
 
@@ -478,7 +493,7 @@ function render(boxes, lines, isDiff) {
         const src = boxDict.get(l.source[0]);
         const dst = boxDict.get(l.destination[0]);
         if (src && dst) {
-            const path = createConnectionPath(src, dst, l);
+            const path = createConnectionPath(src, dst, l, isPresentation);
             path.setAttribute("data-src", l.source[0]);
             path.setAttribute("data-dst", l.destination[0]);
             path.setAttribute("data-src-idx", l.source[1]);
@@ -554,9 +569,11 @@ function renderInletsOutlets(el, b) {
     }
 }
 
-function createConnectionPath(src, dst, line) {
-    const [sx, sy, sw, sh] = src.patching_rect;
-    const [dx, dy, dw, dh] = dst.patching_rect;
+function createConnectionPath(src, dst, line, isPresentation) {
+    const srcRect = isPresentation && src.presentation_rect ? src.presentation_rect : src.patching_rect;
+    const dstRect = isPresentation && dst.presentation_rect ? dst.presentation_rect : dst.patching_rect;
+    const [sx, sy, sw, sh] = srcRect;
+    const [dx, dy, dw, dh] = dstRect;
     const srcOutlets = src.numoutlets || 1;
     const dstInlets = dst.numinlets || 1;
     const startX = sx + (sw / (srcOutlets + 1)) * (line.source[1] + 1);
@@ -572,6 +589,7 @@ function createConnectionPath(src, dst, line) {
 }
 
 // --- Interactivity ---
+
 function setZoom(newLevel, pivot) {
     const oldLevel = zoomLevel;
     newLevel = Math.max(0.2, Math.min(newLevel, 3.0));
@@ -637,7 +655,7 @@ function makeDraggable(el, onDrag) {
     });
 }
 
-function updateConnectedLines(movedBox, lines, boxDict) {
+function updateConnectedLines(movedBox, lines, boxDict, isPresentation) {
     lines.forEach(l => {
         if (l.source[0] === movedBox.id || l.destination[0] === movedBox.id) {
             const selector = `path[data-src="${l.source[0]}"][data-dst="${l.destination[0]}"][data-src-idx="${l.source[1]}"][data-dst-idx="${l.destination[1]}"]`;
@@ -645,8 +663,10 @@ function updateConnectedLines(movedBox, lines, boxDict) {
             if (path) {
                 const src = boxDict.get(l.source[0]);
                 const dst = boxDict.get(l.destination[0]);
-                const newPath = createConnectionPath(src, dst, l);
-                path.setAttribute("d", newPath.getAttribute("d"));
+                if (src && dst) {
+                    const newPath = createConnectionPath(src, dst, l, isPresentation);
+                    path.setAttribute("d", newPath.getAttribute("d"));
+                }
             }
         }
     });
