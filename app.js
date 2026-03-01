@@ -631,7 +631,6 @@ function makeDraggable(el, onDrag) {
     const onMouseUp = () => {
         if (isDragging) {
             isDragging = false;
-            el.style.zIndex = "";
             if (hasMoved) {
                 el.setAttribute("data-dragged", "true");
                 setTimeout(() => el.removeAttribute("data-dragged"), 0);
@@ -649,7 +648,6 @@ function makeDraggable(el, onDrag) {
         startY = e.clientY;
         initialLeft = parseFloat(el.style.left);
         initialTop = parseFloat(el.style.top);
-        el.style.zIndex = 100;
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
     });
