@@ -287,7 +287,7 @@ function comparePatches(dataA, dataB) {
 }
 
 // --- Rendering Logic ---
-
+// TODO: Metadata pane should also follow before/after/diff selection.
 function renderMetadataDiffs(diffs) {
     metadataContent.innerHTML = "";
     diffs.forEach(diff => {
@@ -298,13 +298,13 @@ function renderMetadataDiffs(diffs) {
         keyDiv.className = "meta-key";
         keyDiv.textContent = diff.key;
 
-        const oldDiv = document.createElement("span");
+        const oldDiv = document.createElement("pre");
         oldDiv.className = "meta-old";
-        oldDiv.textContent = JSON.stringify(diff.old);
+        oldDiv.textContent = JSON.stringify(diff.old, null, 2);
 
-        const newDiv = document.createElement("span");
+        const newDiv = document.createElement("pre");
         newDiv.className = "meta-new";
-        newDiv.textContent = JSON.stringify(diff.new);
+        newDiv.textContent = JSON.stringify(diff.new, null, 2);
 
         div.appendChild(keyDiv);
         div.appendChild(oldDiv);
