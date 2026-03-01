@@ -425,6 +425,9 @@ function createBoxElement(box, isDiff, lines, boxDict, isPresentation) {
 
     applySpecialStyle(box, el);
 
+    const hasSubpatch = isDiff ? (box.patcherA || box.patcherB) : box.patcher;
+    let clickTimeout = null;
+
     if (isDiff && box.diffState === "modified" && box.attrDiffs?.length > 0) {
         el.style.cursor = "help";
         const indicator = document.createElement("div");
@@ -435,7 +438,16 @@ function createBoxElement(box, isDiff, lines, boxDict, isPresentation) {
 
     el.addEventListener("click", (e) => {
         if (el.getAttribute("data-dragged") === "true") return;
-        if (e.detail === 1 && isDiff) showDetails(box);
+        if (e.detail === 1 && isDiff) {
+            if (hasSubpatch) {
+                clickTimeout = setTimeout(() => {
+                    showDetails(box);
+                    clickTimeout = null;
+                }, 250);
+            } else {
+                showDetails(box);
+            }
+        }
     });
 
     makeDraggable(el, (newX, newY) => {
@@ -460,6 +472,10 @@ function createBoxElement(box, isDiff, lines, boxDict, isPresentation) {
         el.style.borderWidth = "3px";
         el.style.cursor = "pointer";
         el.addEventListener("dblclick", () => {
+            if (clickTimeout) {
+                clearTimeout(clickTimeout);
+                clickTimeout = null;
+            }
             if (isDiff) navigateToSubpatch(box.patcherA, box.patcherB);
             else navigateToSubpatch(box.patcher, box.patcher);
         });
