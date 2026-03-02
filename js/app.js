@@ -196,6 +196,22 @@ class PatcherApp {
     }
 
     #formatAttrChange(key, oldV, newV) {
+        if (oldV === undefined) {
+            return `
+            <div class="attr-change">
+                <div class="attr-name">Added: ${key}</div>
+                <span class="attr-new">${JSON.stringify(newV)}</span>
+            </div>
+        `;
+        }
+        if (newV === undefined) {
+            return `
+            <div class="attr-change">
+                <div class="attr-name">Removed: ${key}</div>
+                <span class="attr-old">${JSON.stringify(oldV)}</span>
+            </div>
+        `;
+        }
         return `
             <div class="attr-change">
                 <div class="attr-name">${key}</div>
@@ -217,12 +233,28 @@ class PatcherApp {
 
     #renderMetadata(meta, diffs) {
         const content = diffs.length > 0
-            ? diffs.map(d => `
+            ? diffs.map(d => {
+                if (d.old === undefined) {
+                    return `
+                <div class="meta-change">
+                    <div class="meta-key">Added: ${d.key}</div>
+                    <pre class="meta-new">${JSON.stringify(d.new, null, 2)}</pre>
+                </div>`;
+                }
+                if (d.new === undefined) {
+                    return `
+                <div class="meta-change">
+                    <div class="meta-key">Removed: ${d.key}</div>
+                    <pre class="meta-old">${JSON.stringify(d.old, null, 2)}</pre>
+                </div>`;
+                }
+                return `
                 <div class="meta-change">
                     <div class="meta-key">${d.key}</div>
                     <pre class="meta-old">${JSON.stringify(d.old, null, 2)}</pre>
                     <pre class="meta-new">${JSON.stringify(d.new, null, 2)}</pre>
-                </div>`).join('')
+                </div>`;
+            }).join('')
             : Object.entries(meta).map(([k, v]) => `
                 <div class="meta-change">
                     <div class="meta-key">${k}</div>
