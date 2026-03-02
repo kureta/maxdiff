@@ -413,7 +413,9 @@ export class MaxPatcher extends HTMLElement {
             button: 'max-button',
             inlet: 'max-inlet',
             outlet: 'max-outlet',
-            panel: 'max-panel'
+            panel: 'max-panel',
+            "bach.roll": 'max-panel',
+            "bach.score": 'max-panel'
         }[box.maxclass] ?? 'max-box';
 
         const el = document.createElement(tag);
