@@ -43,9 +43,11 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
 
             server: DiffServer = self.server  # type: ignore
-            data = {"old": self.load_patch_json(server.old_file),
+            data = {
+                "old": self.load_patch_json(server.old_file),
                 "new": self.load_patch_json(server.new_file),
-                "filename": server.file_path, }
+                "filename": server.file_path,
+            }
             self.wfile.write(json.dumps(data).encode("utf-8"))
         else:
             super().do_GET()
@@ -63,8 +65,8 @@ class DiffServer(socketserver.TCPServer):
     """A simple TCP server that stores diff-related file paths."""
 
     def __init__(self, server_address: tuple[str, int],
-            RequestHandlerClass: type[DiffHandler], old_file: str | Path,
-            new_file: str | Path, file_path: str, ) -> None:
+                 RequestHandlerClass: type[DiffHandler], old_file: str | Path,
+                 new_file: str | Path, file_path: str, ) -> None:
         super().__init__(server_address, RequestHandlerClass)
         self.old_file: Final = old_file
         self.new_file: Final = new_file
@@ -90,10 +92,9 @@ def main() -> None:
             file_path = f"{Path(old_arg).name} vs {Path(new_arg).name}"
             old_file, new_file = cwd / old_arg, cwd / new_arg
         case _:
-            print(
-                "Usage modes:\n  1. Git difftool: maxdiff.py path old_file old_hex "
-                "old_mode new_file new_hex new_mode\n  2. Standalone:   maxdiff.py "
-                "old.maxpat new.maxpat")
+            print("""Usage modes:
+    1. Git difftool: maxdiff.py path old_file old_hex old_mode new_file new_hex new_mode
+    2. Standalone:   maxdiff.py old.maxpat new.maxpat""")
             return
 
     with DiffServer(("", 0), DiffHandler, old_file, new_file, file_path) as httpd:
