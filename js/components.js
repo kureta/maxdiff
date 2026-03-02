@@ -16,6 +16,8 @@ boxStyles.replaceSync(`
         font-family: "Lato", "Arial", sans-serif;
         white-space: pre-wrap;
         padding: 0 4px;
+        user-select: none;
+        -webkit-user-select: none;
         transition: border-color 0.2s, color 0.2s;
     }
     :host(:hover) { border-color: var(--border-hover, #999); }
@@ -572,6 +574,7 @@ export class MaxPatcher extends HTMLElement {
 
         el.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
+            e.preventDefault();
             startX = e.clientX;
             startY = e.clientY;
             initialPos = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
