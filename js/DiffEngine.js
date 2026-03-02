@@ -115,6 +115,7 @@ export class DiffEngine {
             const isPositionOrSizeModified = !this.isRectEqual(boxA.patching_rect, boxB.patching_rect);
             const diffState = isContentModified ? "modified" : (isPositionOrSizeModified ? "moved" : "unchanged");
 
+            // TODO: box.patcher exists only if the object is a patcher. Check this logic. What does it do?
             diffBoxes.push({
                 ...boxB,
                 id: boxB.id,

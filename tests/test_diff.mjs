@@ -11,6 +11,13 @@ const loadPatch = (filename) => {
     return JSON.parse(content);
 };
 
+// TODO:
+//  * Create a couple of optimum `maxpat` and `amxd` pairs.
+//      * Added, deleted, modified objects
+//      * Deleted objects that were in the presentation view
+//      * Objects added to/removed from presentation view
+//      * Moved objects
+//  * Write all expected results of the diffing operation and test against that.
 const runTests = () => {
     console.log("Running DiffEngine tests...");
 
