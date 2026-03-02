@@ -74,7 +74,6 @@ export class DiffEngine {
         for (const boxA of unmatchedA) {
             for (const boxB of unmatchedB) {
                 const score = this.calculateSimilarity(boxA, boxB, adjA, adjB, anchorMap);
-                console.log(boxA, boxB, score);
                 candidates.push({boxA, boxB, score});
             }
         }
