@@ -158,6 +158,21 @@ patcherStyle.replaceSync(`
 `);
 
 /**
+ * Helper to get the correct rectangle for a box, considering presentation mode and diffs.
+ */
+function getBoxRect(box, isPresentation) {
+    let rect = null;
+    if (isPresentation) {
+        rect = box.presentation_rect;
+        if (!rect) {
+            const oldRectDiff = box.attrDiffs?.find(d => d.key === 'presentation_rect');
+            if (oldRectDiff?.old) rect = oldRectDiff.old;
+        }
+    }
+    return rect || box.patching_rect;
+}
+
+/**
  * Base class for all Max objects.
  */
 export class MaxBox extends HTMLElement {
@@ -185,9 +200,8 @@ export class MaxBox extends HTMLElement {
 
     updatePosition() {
         if (!this.#data) return;
-        const rect = this.hasAttribute('presentation') && this.#data.presentation_rect
-            ? this.#data.presentation_rect
-            : this.#data.patching_rect;
+        
+        const rect = getBoxRect(this.#data, this.hasAttribute('presentation'));
         if (!rect) return;
 
         const [x, y, w, h] = rect;
@@ -341,6 +355,7 @@ export class MaxPatcher extends HTMLElement {
     #lines = [];
     #isDiff = false;
     #isPresentation = false;
+    #showRemovedPresentation = false;
     #boxMap = new Map();
 
     static get observedAttributes() { return ['presentation', 'diff']; }
@@ -350,11 +365,23 @@ export class MaxPatcher extends HTMLElement {
         this.attachShadow({ mode: 'open' });
         this.shadowRoot.adoptedStyleSheets = [patcherStyle];
         this.shadowRoot.innerHTML = `
+            <div id="controls" style="position: absolute; top: 10px; right: 10px; z-index: 100;">
+                <label id="show-removed-label" style="display: none; background: rgba(0,0,0,0.7); color: white; padding: 5px; border-radius: 4px; font-family: sans-serif; font-size: 12px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="show-removed-check"> Show removed from presentation
+                </label>
+            </div>
             <div id="container"></div>
             <svg id="svg-layer"></svg>
         `;
         this.container = this.shadowRoot.getElementById('container');
         this.svgLayer = this.shadowRoot.getElementById('svg-layer');
+        this.controls = this.shadowRoot.getElementById('show-removed-label');
+        this.checkbox = this.shadowRoot.getElementById('show-removed-check');
+        
+        this.checkbox.addEventListener('change', () => {
+            this.#showRemovedPresentation = this.checkbox.checked;
+            this.render();
+        });
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -379,13 +406,28 @@ export class MaxPatcher extends HTMLElement {
         this.svgLayer.innerHTML = '';
         this.#boxMap.clear();
 
+        if (this.controls) {
+            this.controls.style.display = this.#isPresentation ? 'block' : 'none';
+        }
+
         let maxX = 0, maxY = 0;
 
-        const visibleBoxes = this.#boxes.filter(b => !this.#isPresentation || b.presentation || (b.diffState === 'removed' && b.presentation_rect));
+        const visibleBoxes = this.#boxes.filter(b => {
+            if (!this.#isPresentation) return true;
+            if (b.presentation) return true;
+            if (b.diffState === 'removed' && b.presentation_rect) return true;
+            
+            if (this.#showRemovedPresentation) {
+                const presentationDiff = b.attrDiffs?.find(d => d.key === 'presentation');
+                if (presentationDiff && presentationDiff.old === 1) return true;
+            }
+            return false;
+        });
 
         for (const box of visibleBoxes) {
             this.#boxMap.set(box.id, box);
-            const rect = (this.#isPresentation && box.presentation_rect) ? box.presentation_rect : box.patching_rect;
+            
+            const rect = getBoxRect(box, this.#isPresentation);
             if (!rect) continue;
 
             maxX = Math.max(maxX, rect[0] + rect[2]);
@@ -417,8 +459,8 @@ export class MaxPatcher extends HTMLElement {
     }
 
     createConnectionPath(src, dst, line) {
-        const sR = (this.#isPresentation && src.presentation_rect) ? src.presentation_rect : src.patching_rect;
-        const dR = (this.#isPresentation && dst.presentation_rect) ? dst.presentation_rect : dst.patching_rect;
+        const sR = getBoxRect(src, this.#isPresentation);
+        const dR = getBoxRect(dst, this.#isPresentation);
 
         // If we can't find rects (e.g. subpatch navigation issue), skip
         if (!sR || !dR) return document.createElementNS("http://www.w3.org/2000/svg", "path");
