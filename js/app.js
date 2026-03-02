@@ -1,18 +1,11 @@
 import './components.js';
-import { DiffEngine } from './DiffEngine.js';
+import {StateManager} from './StateManager.js';
 
 /**
  * Main application controller for the Max Patch Diff Tool.
  */
 class PatcherApp {
-    #state = {
-        dataA: null,
-        dataB: null,
-        currentDiffData: null,
-        zoomLevel: 1.0,
-        navStack: []
-    };
-
+    #state = new StateManager();
     #elements = {
         patcher: document.getElementById('patcher'),
         wrapper: document.getElementById('patcher-wrapper'),
@@ -47,80 +40,83 @@ class PatcherApp {
 
     #createBackButton() {
         const btn = document.createElement('button');
-        Object.assign(btn, { 
-            id: 'btn-back', 
-            textContent: 'Back to Parent', 
-            hidden: true 
+        Object.assign(btn, {
+            id: 'btn-back',
+            textContent: 'Back to Parent',
+            hidden: true
         });
         this.#elements.controls.appendChild(btn);
         return btn;
     }
 
     #setupEventListeners() {
-        const { 
-            presentationToggle, closeModal, modal, sidebar, 
-            closeSidebar, btnMetadata, btnResetLayout, 
+        const {
+            presentationToggle, closeModal, modal, sidebar,
+            closeSidebar, btnMetadata, btnResetLayout,
             btnZoomIn, btnZoomOut, btnZoomReset, wrapper,
             patcher
         } = this.#elements;
 
-        presentationToggle.onchange = () => this.#updateView();
-        
+        presentationToggle.onchange = () => this.#state.togglePresentation(presentationToggle.checked);
+
         const closeM = () => modal.style.display = 'none';
         closeModal.onclick = closeM;
-        window.onclick = (e) => { if (e.target === modal) closeM(); };
+        window.onclick = (e) => {
+            if (e.target === modal) closeM();
+        };
 
         btnMetadata.onclick = () => sidebar.classList.toggle('open');
         closeSidebar.onclick = () => sidebar.classList.remove('open');
 
         document.querySelectorAll('input[name="view"]').forEach(radio => {
-            radio.onchange = () => this.#updateView();
+            radio.onchange = () => this.#state.setViewMode(radio.value);
         });
 
         const handleFile = (key) => async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            this.#state[key] = JSON.parse(await file.text());
-            this.#onDataChanged();
+            const data = JSON.parse(await file.text());
+            if (key === 'dataA') this.#state.setFileA(data);
+            else this.#state.setFileB(data);
         };
 
         document.getElementById('fileInputA').onchange = handleFile('dataA');
         document.getElementById('fileInputB').onchange = handleFile('dataB');
 
         btnResetLayout.onclick = () => {
-            this.#setZoom(1.0);
-            wrapper.scrollTo(0, 0);
+            this.#state.resetLayout();
             closeM();
             sidebar.classList.remove('open');
-            this.#onDataChanged();
         };
 
-        btnZoomIn.onclick = () => this.#setZoom(this.#state.zoomLevel * 1.1);
-        btnZoomOut.onclick = () => this.#setZoom(this.#state.zoomLevel / 1.1);
-        btnZoomReset.onclick = () => this.#setZoom(1.0);
+        btnZoomIn.onclick = () => this.#state.setZoom(this.#state.state.zoomLevel * 1.1);
+        btnZoomOut.onclick = () => this.#state.setZoom(this.#state.state.zoomLevel / 1.1);
+        btnZoomReset.onclick = () => this.#state.setZoom(1.0);
 
         wrapper.onwheel = (e) => {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 const factor = e.deltaY > 0 ? 1 / 1.05 : 1.05;
-                this.#setZoom(this.#state.zoomLevel * factor, { x: e.clientX, y: e.clientY });
+                this.#state.setZoom(this.#state.state.zoomLevel * factor, {x: e.clientX, y: e.clientY});
             }
         };
 
-        this.#btnBack.onclick = () => this.#navigateBack();
+        this.#btnBack.onclick = () => this.#state.popSubpatch();
 
         patcher.addEventListener('box-click', (e) => {
-            const { box, originalEvent } = e.detail;
+            const {box, originalEvent} = e.detail;
             const isIndicator = originalEvent.composedPath().some(el => el.classList?.contains('info-indicator'));
             if (isIndicator) this.#handleBoxClick(box);
         });
         patcher.addEventListener('box-dblclick', (e) => {
-            const { box, originalEvent } = e.detail;
+            const {box, originalEvent} = e.detail;
             const isIndicator = originalEvent.composedPath().some(el => el.classList?.contains('info-indicator'));
             if (!isIndicator) this.#handleBoxDblClick(box);
         });
 
         window.onpagehide = () => navigator.sendBeacon('/shutdown');
+
+        this.#state.addEventListener('state-change', (e) => this.#onStateChange(e.detail));
     }
 
     async #loadInitialData() {
@@ -130,51 +126,47 @@ class PatcherApp {
                 const data = await res.json();
                 this.#elements.fileInputs.hidden = true;
                 if (data.filename) document.title = `Diff: ${data.filename}`;
-                this.#state.dataA = data.old;
-                this.#state.dataB = data.new;
-                this.#onDataChanged();
+                this.#state.setInitialData(data.old, data.new);
             }
         } catch (e) {
             console.warn('Local server not found, falling back to file inputs.');
         }
     }
 
-    #onDataChanged() {
-        if (!this.#state.dataA && !this.#state.dataB) return;
-        this.#state.currentDiffData = DiffEngine.compare(this.#state.dataA, this.#state.dataB);
-        this.#elements.viewToggles.style.display = 'block';
-        this.#elements.btnMetadata.style.display = 'inline-block';
-        this.#updateView();
+    #onStateChange({type, state, pivot}) {
+        if (type === 'data' || type === 'navigation') {
+            this.#elements.viewToggles.style.display = 'block';
+            this.#elements.btnMetadata.style.display = 'inline-block';
+            this.#btnBack.hidden = state.navStack.length === 0;
+            this.#updateView(state);
+        } else if (type === 'view') {
+            this.#updateView(state);
+        } else if (type === 'zoom') {
+            this.#applyZoom(state.zoomLevel, pivot);
+        } else if (type === 'layout-reset') {
+            this.#applyZoom(1.0);
+            this.#elements.wrapper.scrollTo(0, 0);
+        }
     }
 
-    #updateView() {
-        const mode = document.querySelector('input[name="view"]:checked')?.value ?? 'diff';
-        const isPres = this.#elements.presentationToggle.checked;
-        const patcher = this.#elements.patcher;
+    #updateView(state) {
+        const {patcher, presentationToggle} = this.#elements;
+        const mode = state.viewMode;
+        const isPres = state.isPresentation;
 
         patcher.toggleAttribute('presentation', isPres);
         patcher.toggleAttribute('diff', mode === 'diff');
 
-        let meta = {};
-        let metaDiffs = [];
+        const renderData = this.#state.currentRenderData;
+        patcher.patchData = renderData;
 
-        if (mode === 'before' && this.#state.dataA) {
-            patcher.patchData = DiffEngine.normalize(this.#state.dataA);
-            meta = DiffEngine.getMetadata(this.#state.dataA);
-        } else if (mode === 'after' && this.#state.dataB) {
-            patcher.patchData = DiffEngine.normalize(this.#state.dataB);
-            meta = DiffEngine.getMetadata(this.#state.dataB);
-        } else if (mode === 'diff' && this.#state.currentDiffData) {
-            patcher.patchData = this.#state.currentDiffData;
-            metaDiffs = DiffEngine.compareMetadata(this.#state.dataA, this.#state.dataB);
-        }
-
-        this.#renderMetadata(meta, metaDiffs);
+        const {diffs, meta} = this.#state.currentMetadata;
+        this.#renderMetadata(meta, diffs);
     }
 
     #handleBoxClick(box) {
         if (box.diffState !== 'modified' || !box.attrDiffs?.length) return;
-        
+
         this.#elements.modalContent.innerHTML = box.attrDiffs.map(d => {
             if (d.key === 'saved_attribute_attributes') {
                 const oldA = d.old?.valueof ?? {}, newA = d.new?.valueof ?? {};
@@ -202,28 +194,13 @@ class PatcherApp {
     }
 
     #handleBoxDblClick(box) {
-        const mode = document.querySelector('input[name="view"]:checked')?.value ?? 'diff';
+        const mode = this.#state.state.viewMode;
         const pA = mode === 'before' ? box.patcher : (mode === 'diff' ? box.patcherA : null);
         const pB = mode === 'after' ? box.patcher : (mode === 'diff' ? box.patcherB : null);
-        
+
         if (pA || pB) {
-            this.#navigateToSubpatch(pA, pB);
+            this.#state.pushSubpatch(pA, pB);
         }
-    }
-
-    #navigateToSubpatch(pA, pB) {
-        this.#state.navStack.push({ dataA: this.#state.dataA, dataB: this.#state.dataB });
-        this.#btnBack.hidden = false;
-        this.#state.dataA = pA ? { patcher: pA } : null;
-        this.#state.dataB = pB ? { patcher: pB } : null;
-        this.#onDataChanged();
-    }
-
-    #navigateBack() {
-        const prevState = this.#state.navStack.pop();
-        this.#btnBack.hidden = this.#state.navStack.length === 0;
-        Object.assign(this.#state, prevState);
-        this.#onDataChanged();
     }
 
     #renderMetadata(meta, diffs) {
@@ -246,20 +223,20 @@ class PatcherApp {
         if (!hasMeta) this.#elements.sidebar.classList.remove('open');
     }
 
-    #setZoom(level, pivot) {
-        level = Math.max(0.2, Math.min(level, 3.0));
-        if (level === this.#state.zoomLevel) return;
-
-        const { wrapper, patcher, btnZoomReset } = this.#elements;
+    #applyZoom(level, pivot) {
+        const {wrapper, patcher, btnZoomReset} = this.#elements;
         const rect = wrapper.getBoundingClientRect();
         const px = pivot ? pivot.x - rect.left : wrapper.clientWidth / 2;
         const py = pivot ? pivot.y - rect.top : wrapper.clientHeight / 2;
 
-        const ratio = level / this.#state.zoomLevel;
+        // Get current scale from element to calculate ratio
+        const matrix = new DOMMatrix(getComputedStyle(patcher).transform);
+        const currentScale = matrix.a || 1;
+
+        const ratio = level / currentScale;
         wrapper.scrollLeft = (px + wrapper.scrollLeft) * ratio - px;
         wrapper.scrollTop = (py + wrapper.scrollTop) * ratio - py;
 
-        this.#state.zoomLevel = level;
         patcher.style.transform = `scale(${level})`;
         btnZoomReset.textContent = `${Math.round(level * 100)}%`;
     }

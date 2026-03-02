@@ -126,22 +126,23 @@
 
     .sidebar {
         height: 100%;
-        width: 0;
+        width: 400px;
         position: fixed;
         z-index: 200;
         top: 0;
         right: 0;
         background-color: var(--bg-color);
-        overflow-x: hidden;
-        transition: width 0.3s ease-in-out;
+        transition: transform 0.3s ease-in-out;
         border-left: 1px solid var(--border-color);
         box-shadow: -5px 0 15px rgba(0, 0, 0, 0.5);
         display: flex;
         flex-direction: column;
+        transform: translateX(100%);
+        padding: 20px;
+        box-sizing: border-box;
 
         &.open {
-            width: 400px;
-            padding: 20px;
+            transform: translateX(0);
         }
 
         .sidebar-header {
@@ -189,6 +190,7 @@
                     background: var(--bg-dark);
                     border-radius: 3px;
                     overflow-x: auto;
+                    white-space: pre-wrap;
                 }
                 .meta-old {
                     color: var(--accent-removed);

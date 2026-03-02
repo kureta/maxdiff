@@ -27,67 +27,92 @@ export class DiffEngine {
      * @returns {{boxes: Array, lines: Array}}
      */
     static compare(dataA, dataB) {
-        const { boxes: boxesA, lines: linesA } = this.normalize(dataA);
-        const { boxes: boxesB, lines: linesB } = this.normalize(dataB);
+        const {boxes: boxesA, lines: linesA} = this.normalize(dataA);
+        const {boxes: boxesB, lines: linesB} = this.normalize(dataB);
 
         const mapA = new Map(boxesA.map(b => [b.id, b]));
         const mapB = new Map(boxesB.map(b => [b.id, b]));
-        
+
         const ignoredAttrs = new Set([
-            "id", "patching_rect", "text", "maxclass", "patcher", 
+            "id", "patching_rect", "text", "maxclass", "patcher",
             "presentation", "presentation_rect"
         ]);
 
         const allIds = new Set([...mapA.keys(), ...mapB.keys()]);
-        const diffBoxes = Array.from(allIds).map(id => {
+        const diffBoxes = [];
+
+        for (const id of allIds) {
             const boxA = mapA.get(id);
             const boxB = mapB.get(id);
 
-            if (!boxB) return { ...boxA, diffState: "removed", patcherA: boxA.patcher, patcherB: null };
-            if (!boxA) return { ...boxB, diffState: "added", patcherA: null, patcherB: boxB.patcher };
+            if (!boxB) {
+                diffBoxes.push({...boxA, diffState: "removed", patcherA: boxA.patcher, patcherB: null});
+                continue;
+            }
+            if (!boxA) {
+                diffBoxes.push({...boxB, diffState: "added", patcherA: null, patcherB: boxB.patcher});
+                continue;
+            }
 
             const attrDiffs = this.compareObjects(boxA, boxB, "", ignoredAttrs);
             const textA = boxA.text ?? boxA.maxclass;
             const textB = boxB.text ?? boxB.maxclass;
 
-            const isContentModified = textA !== textB ||
-                JSON.stringify(boxA.patcher) !== JSON.stringify(boxB.patcher) ||
+            let isContentModified = textA !== textB ||
                 boxA.patching_rect[2] !== boxB.patching_rect[2] ||
                 boxA.patching_rect[3] !== boxB.patching_rect[3] ||
                 attrDiffs.length > 0 ||
                 boxA.presentation !== boxB.presentation ||
-                JSON.stringify(boxA.presentation_rect) !== JSON.stringify(boxB.presentation_rect);
+                !this.isRectEqual(boxA.presentation_rect, boxB.presentation_rect);
 
-            const isPositionModified = boxA.patching_rect[0] !== boxB.patching_rect[0] || 
-                                       boxA.patching_rect[1] !== boxB.patching_rect[1];
+            if (!isContentModified) {
+                if (JSON.stringify(boxA.patcher) !== JSON.stringify(boxB.patcher)) {
+                    isContentModified = true;
+                }
+            }
+
+            const isPositionModified = boxA.patching_rect[0] !== boxB.patching_rect[0] ||
+                boxA.patching_rect[1] !== boxB.patching_rect[1];
 
             const diffState = isContentModified ? "modified" : (isPositionModified ? "moved" : "unchanged");
-            
-            return { 
-                ...boxB, 
-                diffState, 
-                patcherA: boxA.patcher, 
-                patcherB: boxB.patcher, 
-                oldText: textA, 
-                attrDiffs 
-            };
-        });
+
+            diffBoxes.push({
+                ...boxB,
+                diffState,
+                patcherA: boxA.patcher,
+                patcherB: boxB.patcher,
+                oldText: textA,
+                attrDiffs
+            });
+        }
 
         const getLineKey = (l) => `${l.source.join(",")}-${l.destination.join(",")}`;
         const linesMapA = new Map(linesA.map(l => [getLineKey(l), l]));
         const linesMapB = new Map(linesB.map(l => [getLineKey(l), l]));
 
         const allLineKeys = new Set([...linesMapA.keys(), ...linesMapB.keys()]);
-        const diffLines = Array.from(allLineKeys).map(key => {
+        const diffLines = [];
+
+        for (const key of allLineKeys) {
             const lA = linesMapA.get(key);
             const lB = linesMapB.get(key);
-            
-            if (!lB) return { ...lA, diffState: "removed" };
-            if (!lA) return { ...lB, diffState: "added" };
-            return { ...lB, diffState: "unchanged" };
-        });
 
-        return { boxes: diffBoxes, lines: diffLines };
+            if (!lB) {
+                diffLines.push({...lA, diffState: "removed"});
+            } else if (!lA) {
+                diffLines.push({...lB, diffState: "added"});
+            } else {
+                diffLines.push({...lB, diffState: "unchanged"});
+            }
+        }
+
+        return {boxes: diffBoxes, lines: diffLines};
+    }
+
+    static isRectEqual(r1, r2) {
+        if (r1 === r2) return true;
+        if (!r1 || !r2) return false;
+        return r1[0] === r2[0] && r1[1] === r2[1] && r1[2] === r2[2] && r1[3] === r2[3];
     }
 
     /**
@@ -95,20 +120,27 @@ export class DiffEngine {
      */
     static compareObjects(objA, objB, path = "", ignored = new Set()) {
         const diffs = [];
-        const allKeys = new Set([...Object.keys(objA ?? {}), ...Object.keys(objB ?? {})]);
+        const keysA = Object.keys(objA ?? {});
+        const keysB = Object.keys(objB ?? {});
+        const allKeys = new Set([...keysA, ...keysB]);
 
         for (const key of allKeys) {
             if (ignored.has(key)) continue;
-            
+
             const valA = objA?.[key];
             const valB = objB?.[key];
             const currentPath = path ? `${path}.${key}` : key;
 
-            if (JSON.stringify(valA) !== JSON.stringify(valB)) {
-                if (this.isObject(valA) && this.isObject(valB)) {
-                    diffs.push(...this.compareObjects(valA, valB, currentPath));
-                } else {
-                    diffs.push({ key: currentPath, old: valA, new: valB });
+            if (valA === valB) continue;
+
+            const isObjA = this.isObject(valA);
+            const isObjB = this.isObject(valB);
+
+            if (isObjA && isObjB) {
+                diffs.push(...this.compareObjects(valA, valB, currentPath));
+            } else {
+                if (JSON.stringify(valA) !== JSON.stringify(valB)) {
+                    diffs.push({key: currentPath, old: valA, new: valB});
                 }
             }
         }
@@ -120,7 +152,7 @@ export class DiffEngine {
     }
 
     static getMetadata(data) {
-        const { boxes, lines, ...metadata } = data?.patcher ?? {};
+        const {boxes, lines, ...metadata} = data?.patcher ?? {};
         return metadata;
     }
 
