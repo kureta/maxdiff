@@ -59,8 +59,6 @@ export class DiffEngine {
             const textB = boxB.text ?? boxB.maxclass;
 
             let isContentModified = textA !== textB ||
-                boxA.patching_rect[2] !== boxB.patching_rect[2] ||
-                boxA.patching_rect[3] !== boxB.patching_rect[3] ||
                 attrDiffs.length > 0 ||
                 boxA.presentation !== boxB.presentation ||
                 !this.isRectEqual(boxA.presentation_rect, boxB.presentation_rect);
@@ -71,10 +69,9 @@ export class DiffEngine {
                 }
             }
 
-            const isPositionModified = boxA.patching_rect[0] !== boxB.patching_rect[0] ||
-                boxA.patching_rect[1] !== boxB.patching_rect[1];
+            const isPositionOrSizeModified = boxA.patching_rect !== boxB.patching_rect;
 
-            const diffState = isContentModified ? "modified" : (isPositionModified ? "moved" : "unchanged");
+            const diffState = isContentModified ? "modified" : (isPositionOrSizeModified ? "moved" : "unchanged");
 
             diffBoxes.push({
                 ...boxB,
