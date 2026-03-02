@@ -326,6 +326,14 @@ export class MaxButton extends MaxBox {
     getContent() { return `<div class="bang-circle"></div>`; }
 }
 
+export class MaxToggle extends MaxBox {
+    constructor() {
+        super();
+        this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, buttonStyle];
+    }
+    getContent() { return `<div class="box-content">X</div>`; }
+}
+
 export class MaxIO extends MaxBox {
     constructor() {
         super();
@@ -488,6 +496,7 @@ export class MaxPatcher extends HTMLElement {
             message: 'max-message',
             comment: 'max-comment',
             button: 'max-button',
+            toggle: 'max-toggle',
             inlet: 'max-inlet',
             outlet: 'max-outlet',
             panel: 'max-panel',
@@ -595,6 +604,7 @@ const elements = {
     'max-message': MaxMessage,
     'max-comment': MaxComment,
     'max-button': MaxButton,
+    'max-toggle': MaxToggle,
     'max-inlet': MaxInlet,
     'max-outlet': MaxOutlet,
     'max-panel': MaxPanel,
