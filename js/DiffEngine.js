@@ -93,7 +93,7 @@ export class DiffEngine {
         // --- Generate Box Diffs ---
         const diffBoxes = [];
         const ignoredAttrs = new Set([
-            "id", "patching_rect", "text", "maxclass", "patcher", "presentation_rect"
+            "id", "patching_rect", "text", "maxclass", "patcher", "presentation_rect", "rect"
         ]);
 
         for (const [boxA, boxB] of matches) {
@@ -277,7 +277,7 @@ export class DiffEngine {
             const isObjB = this.isObject(valB);
 
             if (isObjA && isObjB) {
-                diffs.push(...this.compareObjects(valA, valB, currentPath));
+                diffs.push(...this.compareObjects(valA, valB, currentPath, ignored));
             } else {
                 if (JSON.stringify(valA) !== JSON.stringify(valB)) {
                     diffs.push({key: currentPath, old: valA, new: valB});
@@ -298,6 +298,6 @@ export class DiffEngine {
 
     static compareMetadata(dataA, dataB) {
         if (!dataA?.patcher || !dataB?.patcher) return [];
-        return this.compareObjects(dataA.patcher, dataB.patcher, "", new Set(["boxes", "lines"]));
+        return this.compareObjects(dataA.patcher, dataB.patcher, "", new Set(["boxes", "lines", "rect"]));
     }
 }
