@@ -27,15 +27,24 @@ class PatcherApp {
     };
 
     #btnBack = null;
+    #filenameDisplay = null;
 
     constructor() {
         this.#init();
     }
 
     async #init() {
+        this.#filenameDisplay = this.#createFilenameDisplay();
         this.#btnBack = this.#createBackButton();
         this.#setupEventListeners();
         await this.#loadInitialData();
+    }
+
+    #createFilenameDisplay() {
+        const span = document.createElement('span');
+        span.id = 'filename-display';
+        this.#elements.controls.prepend(span);
+        return span;
     }
 
     #createBackButton() {
@@ -125,7 +134,10 @@ class PatcherApp {
             if (res.ok) {
                 const data = await res.json();
                 this.#elements.fileInputs.hidden = true;
-                if (data.filename) document.title = `Diff: ${data.filename}`;
+                if (data.filename) {
+                    document.title = `Diff: ${data.filename}`;
+                    this.#filenameDisplay.textContent = data.filename;
+                }
                 this.#state.setInitialData(data.old, data.new);
             }
         } catch (e) {
