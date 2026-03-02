@@ -348,7 +348,7 @@ export class MaxPatcher extends HTMLElement {
 
         let maxX = 0, maxY = 0;
 
-        const visibleBoxes = this.#boxes.filter(b => !this.#isPresentation || b.presentation);
+        const visibleBoxes = this.#boxes.filter(b => !this.#isPresentation || b.presentation || (b.diffState === 'removed' && b.presentation_rect));
 
         for (const box of visibleBoxes) {
             this.#boxMap.set(box.id, box);
