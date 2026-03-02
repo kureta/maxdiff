@@ -59,6 +59,28 @@ boxStyles.replaceSync(`
         transform: scale(1.2);
         filter: brightness(1.1);
     }
+    
+    .presentation-indicator {
+        position: absolute;
+        bottom: -8px; right: -8px;
+        width: 16px; height: 16px;
+        background-color: var(--bg-box, #333);
+        border: 1px solid var(--border-box, #666);
+        color: var(--text-muted, #ccc);
+        border-radius: 50%;
+        font-size: 10px;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 20;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+    .presentation-indicator.added {
+        border-color: var(--accent-added, #4caf50);
+        color: var(--accent-added, #4caf50);
+    }
+    .presentation-indicator.removed {
+        border-color: var(--accent-removed, #f44336);
+        color: var(--accent-removed, #f44336);
+    }
 
     .box-content {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -251,7 +273,18 @@ export class MaxBox extends HTMLElement {
             ? `<div class="info-indicator">i</div>`
             : '';
 
-        this.shadowRoot.innerHTML = `${this.getContent()}${this.getInletsOutlets()}${indicator}`;
+        let presentationIndicator = '';
+        console.log(attrDiffs);
+        const presentationDiff = attrDiffs?.find(d => d.key === 'presentation');
+        if (presentationDiff) {
+            if (presentationDiff.new === 1) {
+                presentationIndicator = `<div class="presentation-indicator added" title="Added to presentation">🐵</div>`;
+            } else if (presentationDiff.old === 1) {
+                presentationIndicator = `<div class="presentation-indicator removed" title="Removed from presentation">🙈</div>`;
+            }
+        }
+
+        this.shadowRoot.innerHTML = `${this.getContent()}${this.getInletsOutlets()}${indicator}${presentationIndicator}`;
     }
 }
 

@@ -93,8 +93,7 @@ export class DiffEngine {
         // --- Generate Box Diffs ---
         const diffBoxes = [];
         const ignoredAttrs = new Set([
-            "id", "patching_rect", "text", "maxclass", "patcher",
-            "presentation", "presentation_rect"
+            "id", "patching_rect", "text", "maxclass", "patcher", "presentation_rect"
         ]);
 
         for (const [boxA, boxB] of matches) {
