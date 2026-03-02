@@ -290,7 +290,6 @@ export class MaxBox extends HTMLElement {
             : '';
 
         let presentationIndicator = '';
-        console.log(attrDiffs);
         const presentationDiff = attrDiffs?.find(d => d.key === 'presentation');
         if (presentationDiff) {
             if (presentationDiff.new === 1) {
