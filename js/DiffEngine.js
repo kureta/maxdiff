@@ -5,7 +5,7 @@
 // Matching scores
 const same_class = 50;
 const same_text = 25;
-const same_num_inlets_outlets = 25;
+const same_num_inlets_outlets = 40;
 const max_connection_score = 50;
 const similar_rectangles = 25;
 const threshold = 100;
@@ -49,7 +49,10 @@ export class DiffEngine {
         for (const boxA of boxesA) {
             const boxB = mapB.get(boxA.id);
             if (boxB) {
-                if (boxA.maxclass === boxB.maxclass && boxA.id === boxB.id) {
+                // NOTE: Some boxes have a `maxclass` of `newobj`. I don't know why.
+                //       So, we have to treat `text` as `maxclass`.
+                const [aClass, bClass] = (boxA.maxclass === "newobj" || boxB.maxclass === "newobj") ? [boxA.text, boxB.text] : [boxA.maxclass, boxB.maxclass];
+                if (aClass === bClass && boxA.id === boxB.id) {
                     matches.set(boxA, boxB);
                     matchedBIds.add(boxB.id);
                 }
