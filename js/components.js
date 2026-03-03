@@ -29,8 +29,8 @@ boxStyles.replaceSync(`
     
     .inlet-point, .outlet-point {
         position: absolute;
-        width: 8px;
-        height: 4px;
+        width: 5px;
+        height: 7px;
         background-color: var(--io-color, #888);
         border-radius: 2px;
         transform: translateX(-50%);
