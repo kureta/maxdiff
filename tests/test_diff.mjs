@@ -1,7 +1,9 @@
-import { DiffEngine } from '../js/DiffEngine.js';
+import {test} from 'node:test';
+import assert from 'node:assert';
+import {DiffEngine} from '../js/DiffEngine.js';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import {fileURLToPath} from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,56 +20,44 @@ const loadPatch = (filename) => {
 //      * Objects added to/removed from presentation view
 //      * Moved objects
 //  * Write all expected results of the diffing operation and test against that.
-const runTests = () => {
-    console.log("Running DiffEngine tests...");
 
-    // Test 1: Synthetic Data - Identical patches
-    {
-        const patchA = { patcher: { boxes: [{ box: { id: "obj-1", maxclass: "newobj", text: "sin" } }] } };
-        const patchB = { patcher: { boxes: [{ box: { id: "obj-1", maxclass: "newobj", text: "sin" } }] } };
+test('DiffEngine tests', async (t) => {
+    await t.test('Synthetic Data - Identical patches', () => {
+        const patchA = {patcher: {boxes: [{box: {id: "obj-1", maxclass: "newobj", text: "sin"}}]}};
+        const patchB = {patcher: {boxes: [{box: {id: "obj-1", maxclass: "newobj", text: "sin"}}]}};
         const result = DiffEngine.compare(patchA, patchB);
-        console.assert(result.boxes.length === 1, "Test 1 Failed: Should have 1 box");
+        assert.strictEqual(result.boxes.length, 1, "Should have 1 box");
         if (result.boxes.length > 0) {
-             console.assert(result.boxes[0].diffState === "unchanged", "Test 1 Failed: Should be unchanged");
+            assert.strictEqual(result.boxes[0].diffState, "unchanged", "Should be unchanged");
         }
-        console.log("Test 1 (Identical) passed.");
-    }
+    });
 
-    // Test 2: Synthetic Data - Added box
-    {
-        const patchA = { patcher: { boxes: [] } };
-        const patchB = { patcher: { boxes: [{ box: { id: "obj-1", maxclass: "newobj", text: "sin" } }] } };
+    await t.test('Synthetic Data - Added box', () => {
+        const patchA = {patcher: {boxes: []}};
+        const patchB = {patcher: {boxes: [{box: {id: "obj-1", maxclass: "newobj", text: "sin"}}]}};
         const result = DiffEngine.compare(patchA, patchB);
-        console.assert(result.boxes.length === 1, "Test 2 Failed: Should have 1 box");
+        assert.strictEqual(result.boxes.length, 1, "Should have 1 box");
         if (result.boxes.length > 0) {
-            console.assert(result.boxes[0].diffState === "added", "Test 2 Failed: Should be added");
+            assert.strictEqual(result.boxes[0].diffState, "added", "Should be added");
         }
-        console.log("Test 2 (Added) passed.");
-    }
+    });
 
-    // Test 3: Real Data
-    try {
+    await t.test('Real Data', () => {
         const dataA = loadPatch('orchidea_static_orchestration_1.maxpat');
         const dataB = loadPatch('orchidea_static_orchestration_2.maxpat');
-        
+
         const result = DiffEngine.compare(dataA, dataB);
-        
+
         console.log(`Real Data Comparison: Found ${result.boxes.length} boxes and ${result.lines.length} lines.`);
-        
+
         const modified = result.boxes.filter(b => b.diffState === 'modified');
         const added = result.boxes.filter(b => b.diffState === 'added');
         const removed = result.boxes.filter(b => b.diffState === 'removed');
-        
-        console.log(`Stats: ${modified.length} modified, ${added.length} added, ${removed.length} removed.`);
-        
-        console.assert(result.boxes.length > 0, "Test 3 Failed: No boxes returned");
-        // We expect differences given the files are different
-        console.assert(modified.length + added.length + removed.length > 0, "Test 3 Failed: No differences found");
-        
-        console.log("Test 3 (Real Data) passed.");
-    } catch (e) {
-        console.error("Test 3 Failed with error:", e);
-    }
-};
 
-runTests();
+        console.log(`Stats: ${modified.length} modified, ${added.length} added, ${removed.length} removed.`);
+
+        assert.ok(result.boxes.length > 0, "No boxes returned");
+        // We expect differences given the files are different
+        assert.ok(modified.length + added.length + removed.length > 0, "No differences found");
+    });
+});
