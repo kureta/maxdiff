@@ -1,6 +1,6 @@
 # `maxdiff`: A visual diff viewer for Max patches
 
-[Screenshot](img/maxdiff.png)
+![Screenshot](/imgs/maxdiff.png?raw=true)
 
 - Works with Max patches (`*.maxpat`) and Max4Live devices (`*.amxd`)
 - Works both with `git diff` and as a standalone diff tool.
