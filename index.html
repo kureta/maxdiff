@@ -28,6 +28,7 @@
     </div>
     <button id="btn-reset-layout">Reset Layout</button>
     <button id="btn-metadata" style="display: none;">Metadata</button>
+    <button id="btn-ignored-diffs" style="display: none;">Ignored Diffs</button>
 </div>
 <div id="viewport">
     <div id="patcher-wrapper">
@@ -49,6 +50,14 @@
         <button id="btn-close-sidebar">&times;</button>
     </div>
     <div id="metadata-content"></div>
+</div>
+
+<div class="sidebar" id="ignored-sidebar">
+    <div class="sidebar-header">
+        <h3>Ignored Diffs</h3>
+        <button id="btn-close-ignored-sidebar">&times;</button>
+    </div>
+    <div id="ignored-content"></div>
 </div>
 
 <script src="js/app.js" type="module"></script>

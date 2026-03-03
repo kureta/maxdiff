@@ -25,6 +25,7 @@ boxStyles.replaceSync(`
     :host(.removed) { border-color: var(--accent-removed, #f44336) !important; color: var(--accent-removed, #f44336) !important; opacity: 0.6; }
     :host(.modified) { border-color: var(--accent-modified, #ff9800) !important; color: var(--accent-modified, #ff9800) !important; }
     :host(.moved) { border-color: var(--accent-moved, #2196f3) !important; color: var(--accent-moved, #2196f3) !important; border-style: dashed !important; }
+    :host(.highlighted) { box-shadow: 0 0 10px 2px var(--accent-moved, #2196f3); z-index: 100; }
     
     .inlet-point, .outlet-point {
         position: absolute;
@@ -504,6 +505,7 @@ export class MaxPatcher extends HTMLElement {
         }[box.maxclass] ?? 'max-box';
 
         const el = document.createElement(tag);
+        el.id = `box-${box.id}`;
         if (this.#isPresentation) el.setAttribute('presentation', '');
         el.data = box;
 
@@ -590,6 +592,18 @@ export class MaxPatcher extends HTMLElement {
             window.addEventListener('mouseup', onMouseUp);
             e.stopPropagation();
         });
+    }
+
+    highlightBox(boxId) {
+        const el = this.shadowRoot.getElementById(`box-${boxId}`);
+        if (el) {
+            el.classList.add('highlighted');
+            el.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
+        }
+    }
+
+    clearHighlight() {
+        this.shadowRoot.querySelectorAll('.highlighted').forEach(el => el.classList.remove('highlighted'));
     }
 
     get zoomLevel() {

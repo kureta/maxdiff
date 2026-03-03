@@ -166,7 +166,7 @@
             }
         }
 
-        #metadata-content {
+        #metadata-content, #ignored-content {
             font-size: 11px;
             color: var(--text-muted);
             overflow-y: auto;
@@ -200,6 +200,45 @@
                     color: var(--accent-added);
                 }
             }
+        }
+    }
+
+    .ignored-box-group {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: var(--bg-box);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+
+        &:hover {
+            background-color: var(--border-box);
+        }
+
+        .ignored-box-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--text-color);
+        }
+
+        .ignored-diff-item {
+            font-family: monospace;
+            margin-left: 10px;
+            margin-bottom: 2px;
+            color: var(--text-muted);
+        }
+
+        .ignored-key {
+            color: #aaa;
+        }
+
+        .ignored-old {
+            color: var(--accent-removed);
+            text-decoration: line-through;
+        }
+
+        .ignored-new {
+            color: var(--accent-added);
         }
     }
 }

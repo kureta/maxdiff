@@ -23,7 +23,11 @@ class PatcherApp {
         btnZoomIn: document.getElementById('btn-zoom-in'),
         btnZoomOut: document.getElementById('btn-zoom-out'),
         btnZoomReset: document.getElementById('btn-zoom-reset'),
-        controls: document.getElementById('controls')
+        controls: document.getElementById('controls'),
+        btnIgnoredDiffs: document.getElementById('btn-ignored-diffs'),
+        ignoredSidebar: document.getElementById('ignored-sidebar'),
+        ignoredContent: document.getElementById('ignored-content'),
+        closeIgnoredSidebar: document.getElementById('btn-close-ignored-sidebar')
     };
 
     #btnBack = null;
@@ -63,7 +67,7 @@ class PatcherApp {
             presentationToggle, closeModal, modal, sidebar,
             closeSidebar, btnMetadata, btnResetLayout,
             btnZoomIn, btnZoomOut, btnZoomReset, wrapper,
-            patcher
+            patcher, btnIgnoredDiffs, ignoredSidebar, closeIgnoredSidebar
         } = this.#elements;
 
         presentationToggle.onchange = () => this.#state.togglePresentation(presentationToggle.checked);
@@ -74,8 +78,17 @@ class PatcherApp {
             if (e.target === modal) closeM();
         };
 
-        btnMetadata.onclick = () => sidebar.classList.toggle('open');
+        btnMetadata.onclick = () => {
+            sidebar.classList.toggle('open');
+            ignoredSidebar.classList.remove('open');
+        };
         closeSidebar.onclick = () => sidebar.classList.remove('open');
+
+        btnIgnoredDiffs.onclick = () => {
+            ignoredSidebar.classList.toggle('open');
+            sidebar.classList.remove('open');
+        };
+        closeIgnoredSidebar.onclick = () => ignoredSidebar.classList.remove('open');
 
         document.querySelectorAll('input[name="view"]').forEach(radio => {
             radio.onchange = () => this.#state.setViewMode(radio.value);
@@ -96,6 +109,7 @@ class PatcherApp {
             this.#state.resetLayout();
             closeM();
             sidebar.classList.remove('open');
+            ignoredSidebar.classList.remove('open');
         };
 
         btnZoomIn.onclick = () => this.#state.setZoom(this.#state.state.zoomLevel * 1.1);
@@ -149,6 +163,7 @@ class PatcherApp {
         if (type === 'data' || type === 'navigation') {
             this.#elements.viewToggles.style.display = 'block';
             this.#elements.btnMetadata.style.display = 'inline-block';
+            this.#elements.btnIgnoredDiffs.style.display = 'inline-block';
             this.#btnBack.hidden = state.navStack.length === 0;
             this.#updateView(state);
         } else if (type === 'view') {
@@ -174,6 +189,7 @@ class PatcherApp {
 
         const {diffs, meta} = this.#state.currentMetadata;
         this.#renderMetadata(meta, diffs);
+        this.#renderIgnoredDiffs(renderData.boxes);
     }
 
     #handleBoxClick(box) {
@@ -265,6 +281,48 @@ class PatcherApp {
         const hasMeta = content.length > 0;
         this.#elements.btnMetadata.disabled = !hasMeta;
         if (!hasMeta) this.#elements.sidebar.classList.remove('open');
+    }
+
+    #renderIgnoredDiffs(boxes) {
+        const ignoredDiffs = [];
+        boxes.forEach(box => {
+            if (box.ignoredDiffs && box.ignoredDiffs.length > 0) {
+                ignoredDiffs.push({box, diffs: box.ignoredDiffs});
+            }
+        });
+
+        const content = ignoredDiffs.map(({box, diffs}) => {
+            const diffsHtml = diffs.map(d => `
+                <div class="ignored-diff-item">
+                    <span class="ignored-key">${d.key}</span>: 
+                    <span class="ignored-old">${JSON.stringify(d.old)}</span> -> 
+                    <span class="ignored-new">${JSON.stringify(d.new)}</span>
+                </div>
+            `).join('');
+
+            return `
+                <div class="ignored-box-group" data-box-id="${box.id}">
+                    <div class="ignored-box-header">Box ${box.id} (${box.maxclass})</div>
+                    ${diffsHtml}
+                </div>
+            `;
+        }).join('');
+
+        this.#elements.ignoredContent.innerHTML = content;
+        const hasIgnored = content.length > 0;
+        this.#elements.btnIgnoredDiffs.disabled = !hasIgnored;
+        if (!hasIgnored) this.#elements.ignoredSidebar.classList.remove('open');
+
+        // Add hover listeners
+        this.#elements.ignoredContent.querySelectorAll('.ignored-box-group').forEach(el => {
+            el.onmouseenter = () => {
+                const boxId = el.dataset.boxId;
+                this.#elements.patcher.highlightBox(boxId);
+            };
+            el.onmouseleave = () => {
+                this.#elements.patcher.clearHighlight();
+            };
+        });
     }
 
     #applyZoom(level, pivot) {

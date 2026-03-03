@@ -93,11 +93,24 @@ export class DiffEngine {
         // --- Generate Box Diffs ---
         const diffBoxes = [];
         const ignoredAttrs = new Set([
-            "id", "patching_rect", "text", "maxclass", "patcher", "presentation_rect", "rect"
+            "id", "patching_rect", "text", "maxclass", "presentation_rect", "rect"
         ]);
+        const hardIgnored = new Set(["patcher"]);
 
         for (const [boxA, boxB] of matches) {
-            const attrDiffs = this.compareObjects(boxA, boxB, "", ignoredAttrs);
+            const allDiffs = this.compareObjects(boxA, boxB, "", hardIgnored);
+            const attrDiffs = [];
+            const ignoredDiffs = [];
+
+            for (const d of allDiffs) {
+                const topKey = d.key.split('.')[0];
+                if (ignoredAttrs.has(topKey)) {
+                    ignoredDiffs.push(d);
+                } else {
+                    attrDiffs.push(d);
+                }
+            }
+
             const textA = boxA.text ?? boxA.maxclass;
             const textB = boxB.text ?? boxB.maxclass;
 
@@ -115,7 +128,6 @@ export class DiffEngine {
             const isPositionOrSizeModified = !this.isRectEqual(boxA.patching_rect, boxB.patching_rect);
             const diffState = isContentModified ? "modified" : (isPositionOrSizeModified ? "moved" : "unchanged");
 
-            // TODO: box.patcher exists only if the object is a patcher. Check this logic. What does it do?
             diffBoxes.push({
                 ...boxB,
                 id: boxB.id,
@@ -124,7 +136,8 @@ export class DiffEngine {
                 patcherA: boxA.patcher,
                 patcherB: boxB.patcher,
                 oldText: textA,
-                attrDiffs
+                attrDiffs,
+                ignoredDiffs
             });
         }
 
