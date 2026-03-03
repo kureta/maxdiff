@@ -32,3 +32,9 @@ And add this to your `.gitattributes`:
 ## Standalone use
 
 `python maxdiff.py file-1.maxpat file-2.maxpat`
+
+## Notes
+
+- Only tested on MacOS
+- Requires `python3` and a web browser, and nothing else
+- Also `git` if you'll use `git diff`
