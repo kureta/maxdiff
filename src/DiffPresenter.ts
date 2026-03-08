@@ -87,7 +87,10 @@ export class DiffPresenter {
     const linesB = safePatchB.patcher.lines?.map((l: any) => l.patchline) || [];
     const diffLines = this.processLines(linesA, linesB, idMapAtoB);
 
-    return { boxes: diffBoxes, lines: diffLines };
+    return {
+      boxes: structuredClone(diffBoxes),
+      lines: structuredClone(diffLines),
+    };
   }
 
   private static processLines(
