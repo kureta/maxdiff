@@ -1,0 +1,33 @@
+{
+  "name": "maxdiff",
+  "version": "1.0.1",
+  "description": "A visual diff tool for Max patches.",
+  "keywords": [
+    "max",
+    "msp",
+    "git",
+    "diff"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@git.kureta.xyz:kureta/maxdiff.git"
+  },
+  "license": "GPL-2.0",
+  "author": "kureta",
+  "type": "module",
+  "main": "app.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --test tests/test_diff.mjs",
+    "build": "tsc",
+    "start": "python maxdiff.py patches/orchidea_static_orchestration_1.maxpat patches/orchidea_static_orchestration_2.maxpat"
+  },
+    "engines": {
+    "node": ">=25.0.0"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
+}

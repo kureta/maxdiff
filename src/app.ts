@@ -1,4 +1,5 @@
 import "./components.js";
+import { MaxPatcher } from "./components.js";
 import { StateManager } from "./StateManager.js";
 
 /**
@@ -7,51 +8,72 @@ import { StateManager } from "./StateManager.js";
 class PatcherApp {
   #state = new StateManager();
   #elements = {
-    patcher: document.getElementById("patcher"),
-    wrapper: document.getElementById("patcher-wrapper"),
-    fileInputs: document.getElementById("file-inputs"),
-    viewToggles: document.getElementById("view-toggles"),
-    presentationToggle: document.getElementById("presentation-toggle"),
-    btnResetLayout: document.getElementById("btn-reset-layout"),
-    btnMetadata: document.getElementById("btn-metadata"),
-    modal: document.getElementById("details-modal"),
-    modalContent: document.getElementById("diff-content"),
-    closeModal: document.querySelector(".close-button"),
-    sidebar: document.getElementById("metadata-sidebar"),
-    sidebarContent: document.getElementById("metadata-content"),
-    closeSidebar: document.getElementById("btn-close-sidebar"),
-    btnZoomIn: document.getElementById("btn-zoom-in"),
-    btnZoomOut: document.getElementById("btn-zoom-out"),
-    btnZoomReset: document.getElementById("btn-zoom-reset"),
-    controls: document.getElementById("controls"),
-    btnIgnoredDiffs: document.getElementById("btn-ignored-diffs"),
-    ignoredSidebar: document.getElementById("ignored-sidebar"),
-    ignoredContent: document.getElementById("ignored-content"),
-    closeIgnoredSidebar: document.getElementById("btn-close-ignored-sidebar"),
+    patcher: document.getElementById("patcher")! as MaxPatcher,
+    wrapper: document.getElementById("patcher-wrapper")! as HTMLDivElement,
+    fileInputs: document.getElementById("file-inputs")! as HTMLDivElement,
+    viewToggles: document.getElementById("view-toggles")! as HTMLDivElement,
+    presentationToggle: document.getElementById(
+      "presentation-toggle",
+    )! as HTMLInputElement,
+    btnResetLayout: document.getElementById(
+      "btn-reset-layout",
+    )! as HTMLButtonElement,
+    btnMetadata: document.getElementById("btn-metadata")! as HTMLButtonElement,
+    modal: document.getElementById("details-modal")! as HTMLDivElement,
+    modalContent: document.getElementById("diff-content")! as HTMLDivElement,
+    closeModal: document.querySelector(".close-button")! as HTMLSpanElement,
+    sidebar: document.getElementById("metadata-sidebar")! as HTMLDivElement,
+    sidebarContent: document.getElementById(
+      "metadata-content",
+    )! as HTMLDivElement,
+    closeSidebar: document.getElementById(
+      "btn-close-sidebar",
+    )! as HTMLButtonElement,
+    btnZoomIn: document.getElementById("btn-zoom-in")! as HTMLButtonElement,
+    btnZoomOut: document.getElementById("btn-zoom-out")! as HTMLButtonElement,
+    btnZoomReset: document.getElementById(
+      "btn-zoom-reset",
+    )! as HTMLButtonElement,
+    controls: document.getElementById("controls")! as HTMLDivElement,
+    btnIgnoredDiffs: document.getElementById(
+      "btn-ignored-diffs",
+    )! as HTMLButtonElement,
+    ignoredSidebar: document.getElementById(
+      "ignored-sidebar",
+    )! as HTMLDivElement,
+    ignoredContent: document.getElementById(
+      "ignored-content",
+    )! as HTMLDivElement,
+    closeIgnoredSidebar: document.getElementById(
+      "btn-close-ignored-sidebar",
+    )! as HTMLButtonElement,
+
+    fileInputA: document.getElementById("fileInputA")! as HTMLInputElement,
+    fileInputB: document.getElementById("fileInputB") as HTMLInputElement,
   };
 
-  #btnBack = null;
-  #filenameDisplay = null;
+  #btnBack: HTMLButtonElement;
+  #filenameDisplay: HTMLSpanElement;
 
   constructor() {
+    this.#filenameDisplay = this.#createFilenameDisplay();
+    this.#btnBack = this.#createBackButton();
+    this.#setupEventListeners();
     this.#init();
   }
 
   async #init() {
-    this.#filenameDisplay = this.#createFilenameDisplay();
-    this.#btnBack = this.#createBackButton();
-    this.#setupEventListeners();
     await this.#loadInitialData();
   }
 
-  #createFilenameDisplay() {
+  #createFilenameDisplay(): HTMLSpanElement {
     const span = document.createElement("span");
     span.id = "filename-display";
     this.#elements.controls.prepend(span);
     return span;
   }
 
-  #createBackButton() {
+  #createBackButton(): HTMLButtonElement {
     const btn = document.createElement("button");
     Object.assign(btn, {
       id: "btn-back",
@@ -102,20 +124,23 @@ class PatcherApp {
     };
     closeIgnoredSidebar.onclick = () => ignoredSidebar.classList.remove("open");
 
-    document.querySelectorAll('input[name="view"]').forEach((radio) => {
-      radio.onchange = () => this.#state.setViewMode(radio.value);
-    });
+    document
+      .querySelectorAll<HTMLInputElement>('input[name="view"]')
+      .forEach((radio) => {
+        radio.onchange = () => this.#state.setViewMode(radio.value);
+      });
 
-    const handleFile = (key) => async (e) => {
-      const file = e.target.files[0];
+    const handleFile = (key: string) => async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
       if (!file) return;
       const data = JSON.parse(await file.text());
       if (key === "dataA") this.#state.setFileA(data);
       else this.#state.setFileB(data);
     };
 
-    document.getElementById("fileInputA").onchange = handleFile("dataA");
-    document.getElementById("fileInputB").onchange = handleFile("dataB");
+    this.#elements.fileInputA.onchange = handleFile("dataA");
+    this.#elements.fileInputB.onchange = handleFile("dataB");
 
     btnResetLayout.onclick = () => {
       this.#state.resetLayout();
@@ -124,11 +149,21 @@ class PatcherApp {
       ignoredSidebar.classList.remove("open");
     };
 
-    btnZoomIn.onclick = () =>
-      this.#state.setZoom(this.#state.state.zoomLevel * 1.1);
-    btnZoomOut.onclick = () =>
-      this.#state.setZoom(this.#state.state.zoomLevel / 1.1);
-    btnZoomReset.onclick = () => this.#state.setZoom(1.0);
+    btnZoomIn.onclick = (e) =>
+      this.#state.setZoom(this.#state.state.zoomLevel * 1.1, {
+        x: e.clientX,
+        y: e.clientY,
+      });
+    btnZoomOut.onclick = (e) =>
+      this.#state.setZoom(this.#state.state.zoomLevel / 1.1, {
+        x: e.clientX,
+        y: e.clientY,
+      });
+    btnZoomReset.onclick = (e) =>
+      this.#state.setZoom(1.0, {
+        x: e.clientX,
+        y: e.clientY,
+      });
 
     wrapper.onwheel = (e) => {
       if (e.ctrlKey || e.metaKey) {

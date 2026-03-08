@@ -672,10 +672,8 @@ export class MaxPatcher extends HTMLElement {
       this.container.appendChild(el);
     }
 
-    this.style.width = `${maxX + 200}px
-`;
-    this.style.height = `${maxY + 200}px
-`;
+    this.style.width = `${maxX + 200}px`;
+    this.style.height = `${maxY + 200}px`;
 
     this.updateLines();
   }
@@ -715,11 +713,7 @@ export class MaxPatcher extends HTMLElement {
     const off = Math.max(20, Math.abs(dY - sY) * 0.4);
     path.setAttribute(
       "d",
-      `M
-${sX}${sY}C
-${sX}${sY + off},
-${dX}${dY - off},
-${dX}${dY}`,
+      `M ${sX} ${sY} C ${sX} ${sY + off}, ${dX} ${dY - off}, ${dX} ${dY}`,
     );
 
     path.dataset.src = line.source[0];
@@ -743,8 +737,7 @@ ${dX}${dY}`,
       }[box.maxclass] ?? "max-box";
 
     const el = document.createElement(tag);
-    el.id = `box-
-${box.id}`;
+    el.id = `box-${box.id}`;
     if (this.#isPresentation) el.setAttribute("presentation", "");
     el.data = box;
 
@@ -801,10 +794,8 @@ ${box.id}`;
         if (!box[rectProp]) box[rectProp] = [0, 0, 0, 0];
         [box[rectProp][0], box[rectProp][1]] = [nx, ny];
 
-        el.style.left = `${nx}px
-`;
-        el.style.top = `${ny}px
-`;
+        el.style.left = `${nx}px`;
+        el.style.top = `${ny}px`;
 
         // Expand patcher if needed
         const right = nx + parseFloat(el.style.width || 0);
@@ -812,12 +803,8 @@ ${box.id}`;
         const currentW = parseFloat(this.style.width || 0);
         const currentH = parseFloat(this.style.height || 0);
 
-        if (right > currentW)
-          this.style.width = `${right + 20}px
-`;
-        if (bottom > currentH)
-          this.style.height = `${bottom + 20}px
-`;
+        if (right > currentW) this.style.width = `${right + 20}px`;
+        if (bottom > currentH) this.style.height = `${bottom + 20}px`;
 
         this.updateLines();
         rafId = null;
@@ -850,8 +837,7 @@ ${box.id}`;
   }
 
   highlightBox(boxId) {
-    const el = this.shadowRoot.getElementById(`box-
-${boxId}`);
+    const el = this.shadowRoot.getElementById(`box-${boxId}`);
     if (el) {
       el.classList.add("highlighted");
       el.scrollIntoView({

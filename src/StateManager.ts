@@ -1,4 +1,4 @@
-import { DiffEngine } from "./DiffEngine.js";
+import { DiffPresenter } from "./DiffPresenter.js";
 
 /**
  * Manages the application state and business logic.
@@ -31,10 +31,14 @@ export class StateManager extends EventTarget {
   get currentRenderData() {
     const { viewMode, dataA, dataB, diffData } = this.#state;
     if (viewMode === "before") {
-      return dataA ? DiffEngine.normalize(dataA) : { boxes: [], lines: [] };
+      return dataA
+        ? DiffPresenter.process(dataA, dataA)
+        : { boxes: [], lines: [] };
     }
     if (viewMode === "after") {
-      return dataB ? DiffEngine.normalize(dataB) : { boxes: [], lines: [] };
+      return dataB
+        ? DiffPresenter.process(dataB, dataB)
+        : { boxes: [], lines: [] };
     }
     return diffData || { boxes: [], lines: [] };
   }
@@ -45,7 +49,7 @@ export class StateManager extends EventTarget {
       return { diffs: metadataDiffs, meta: {} };
     }
     const data = viewMode === "before" ? dataA : dataB;
-    return { diffs: [], meta: data ? DiffEngine.getMetadata(data) : {} };
+    return { diffs: [], meta: data ? DiffPresenter.getMetadata(data) : {} };
   }
 
   setFileA(data) {
@@ -123,11 +127,11 @@ export class StateManager extends EventTarget {
       this.#state.diffData = null;
       this.#state.metadataDiffs = [];
     } else {
-      this.#state.diffData = DiffEngine.compare(
+      this.#state.diffData = DiffPresenter.process(
         this.#state.dataA,
         this.#state.dataB,
       );
-      this.#state.metadataDiffs = DiffEngine.compareMetadata(
+      this.#state.metadataDiffs = DiffPresenter.compareMetadata(
         this.#state.dataA,
         this.#state.dataB,
       );
