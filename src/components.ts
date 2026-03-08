@@ -283,7 +283,7 @@ patcherStyle.replaceSync(`:host {
 }
 `);
 
-type Rect = [number, number, number, number];
+export type Rect = [number, number, number, number];
 
 export interface BoxViewModel {
   id: string;
@@ -297,10 +297,10 @@ export interface BoxViewModel {
   presentation?: number;
   diffState?: string;
   oldText?: string;
-  attrDiffs?: { key: string; old?: any; new?: any }[];
-  patcher?: any;
-  patcherA?: any;
-  patcherB?: any;
+  attrDiffs?: { key: string; old?: unknown; new?: unknown }[];
+  patcher?: unknown;
+  patcherA?: unknown;
+  patcherB?: unknown;
   saved_attribute_attributes?: {
     valueof?: {
       parameter_longname?: string;
@@ -309,7 +309,6 @@ export interface BoxViewModel {
     };
   };
   index?: number;
-  [key: string]: unknown;
 }
 
 export interface LineViewModel {
@@ -319,19 +318,20 @@ export interface LineViewModel {
 }
 
 function getBoxRect(box: BoxViewModel, isPresentation: boolean): Rect | null {
-  let rect: Rect | undefined | null = null;
   if (isPresentation) {
-    rect = box.presentation_rect;
-    if (!rect) {
-      const oldRectDiff = box.attrDiffs?.find(
-        (d) => d.key === "presentation_rect",
-      );
-      if (oldRectDiff?.old) {
-        rect = oldRectDiff.old as Rect;
-      }
-    }
+    const rect =
+      box.presentation_rect ??
+      (box.attrDiffs?.find((d) => d.key === "presentation_rect")?.old as Rect);
+    if (rect) return rect;
   }
-  return rect || box.patching_rect || null;
+  return box.patching_rect ?? null;
+}
+
+function createSVGPath(attributes: Record<string, string>): SVGPathElement {
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  for (const [key, value] of Object.entries(attributes))
+    path.setAttribute(key, value);
+  return path;
 }
 
 export class MaxBox extends HTMLElement {
@@ -611,15 +611,15 @@ export class MaxPanel extends MaxBox {
 export class MaxPatcher extends HTMLElement {
   #boxes: BoxViewModel[] = [];
   #lines: LineViewModel[] = [];
-  #isDiff: boolean = false;
-  #isPresentation: boolean = false;
-  #showRemovedPresentation: boolean = false;
-  #boxMap: Map<string, BoxViewModel> = new Map();
+  #isDiff = false;
+  #isPresentation = false;
+  public showRemovedPresentation = false;
+  #boxMap = new Map<string, BoxViewModel>();
 
   private container: HTMLDivElement;
   private svgLayer: SVGSVGElement;
 
-  static get observedAttributes(): string[] {
+  static get observedAttributes() {
     return ["presentation", "diff"];
   }
 
@@ -627,8 +627,7 @@ export class MaxPatcher extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.shadowRoot!.adoptedStyleSheets = [patcherStyle];
-    this.shadowRoot!.innerHTML = `
-<div id="container"></div>
+    this.shadowRoot!.innerHTML = `<div id="container"></div>
 <svg id="svg-layer"></svg>`;
     this.container = this.shadowRoot!.getElementById(
       "container",
@@ -644,13 +643,9 @@ export class MaxPatcher extends HTMLElement {
     newValue: string | null,
   ): void {
     if (oldValue === newValue) return;
-    if (name === "presentation") {
-      this.#isPresentation = newValue !== null;
-      this.render();
-    } else if (name === "diff") {
-      this.#isDiff = newValue !== null;
-      this.render();
-    }
+    if (name === "presentation") this.#isPresentation = newValue !== null;
+    if (name === "diff") this.#isDiff = newValue !== null;
+    this.render();
   }
 
   set patchData({
@@ -665,55 +660,40 @@ export class MaxPatcher extends HTMLElement {
     this.render();
   }
 
-  set showRemovedPresentation(value: boolean) {
-    if (this.#showRemovedPresentation !== value) {
-      this.#showRemovedPresentation = value;
-      this.render();
-    }
-  }
-
-  get showRemovedPresentation(): boolean {
-    return this.#showRemovedPresentation;
-  }
-
   render(): void {
     this.container.innerHTML = "";
-    this.svgLayer.innerHTML = "";
     this.#boxMap.clear();
 
-    let maxX = 0;
-    let maxY = 0;
+    let maxX = 0,
+      maxY = 0;
 
     const visibleBoxes = this.#boxes.filter((b) => {
-      if (!this.#isPresentation) return true;
-      if (b.presentation) return true;
-      if (b.diffState === "removed" && b.presentation_rect) return true;
-
-      if (this.#showRemovedPresentation) {
-        const presentationDiff = b.attrDiffs?.find(
-          (d) => d.key === "presentation",
-        );
-        if (presentationDiff && presentationDiff.old === 1) return true;
-      }
+      if (
+        !this.#isPresentation ||
+        b.presentation ||
+        (b.diffState === "removed" && b.presentation_rect)
+      )
+        return true;
+      if (
+        this.showRemovedPresentation &&
+        b.attrDiffs?.find((d) => d.key === "presentation")?.old === 1
+      )
+        return true;
       return false;
     });
 
     for (const box of visibleBoxes) {
       this.#boxMap.set(box.id, box);
-
       const rect = getBoxRect(box, this.#isPresentation);
       if (!rect) continue;
 
       maxX = Math.max(maxX, rect[0] + rect[2]);
       maxY = Math.max(maxY, rect[1] + rect[3]);
-
-      const el = this.createBoxElement(box);
-      this.container.appendChild(el);
+      this.container.appendChild(this.createBoxElement(box));
     }
 
     this.style.width = `${maxX + 200}px`;
     this.style.height = `${maxY + 200}px`;
-
     this.updateLines();
   }
 
@@ -722,13 +702,8 @@ export class MaxPatcher extends HTMLElement {
     for (const line of this.#lines) {
       const src = this.#boxMap.get(line.source[0]);
       const dst = this.#boxMap.get(line.destination[0]);
-      if (src && dst) {
-        const path = this.createConnectionPath(src, dst, line);
-        if (this.#isDiff && line.diffState) {
-          path.classList.add(line.diffState);
-        }
-        this.svgLayer.appendChild(path);
-      }
+      if (src && dst)
+        this.svgLayer.appendChild(this.createConnectionPath(src, dst, line));
     }
   }
 
@@ -739,10 +714,7 @@ export class MaxPatcher extends HTMLElement {
   ): SVGPathElement {
     const sR = getBoxRect(src, this.#isPresentation);
     const dR = getBoxRect(dst, this.#isPresentation);
-
-    if (!sR || !dR) {
-      return document.createElementNS("http://www.w3.org/2000/svg", "path");
-    }
+    if (!sR || !dR) return createSVGPath({});
 
     const sX =
       sR[0] + (sR[2] / ((src.numoutlets ?? 1) + 1)) * (line.source[1] + 1);
@@ -750,19 +722,14 @@ export class MaxPatcher extends HTMLElement {
     const dX =
       dR[0] + (dR[2] / ((dst.numinlets ?? 1) + 1)) * (line.destination[1] + 1);
     const dY = dR[1];
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("class", "patchline");
     const off = Math.max(20, Math.abs(dY - sY) * 0.4);
-    path.setAttribute(
-      "d",
-      `M ${sX} ${sY} C ${sX} ${sY + off}, ${dX} ${dY - off}, ${dX} ${dY}`,
-    );
 
-    path.dataset.src = line.source[0];
-    path.dataset.dst = line.destination[0];
-
-    return path;
+    return createSVGPath({
+      class: `patchline ${this.#isDiff && line.diffState ? line.diffState : ""}`,
+      d: `M ${sX} ${sY} C ${sX} ${sY + off}, ${dX} ${dY - off}, ${dX} ${dY}`,
+      "data-src": line.source[0],
+      "data-dst": line.destination[0],
+    });
   }
 
   createBoxElement(box: BoxViewModel): HTMLElement {

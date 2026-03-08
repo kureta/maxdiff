@@ -1,147 +1,132 @@
-// StateManager.ts
 import { DiffPresenter } from "./DiffPresenter.js";
+import { MaxPatchJSON } from "./DiffEngine.js";
+import { BoxViewModel, LineViewModel } from "./components.js";
+
+interface RenderModel {
+  boxes: BoxViewModel[];
+  lines: LineViewModel[];
+}
+
+export type ViewMode = "diff" | "before" | "after";
 
 export class StateManager extends EventTarget {
-  #state = {
-    dataA: null as any,
-    dataB: null as any,
-    diffData: null as any,
-    zoomLevel: 1.0,
-    navStack: [] as any[],
-    viewMode: "diff",
-    isPresentation: false,
-    showRemovedPresentation: false,
-    metadata: {},
-    metadataDiffs: [] as any[],
+  #dataA: MaxPatchJSON | null = null;
+  #dataB: MaxPatchJSON | null = null;
+
+  #models: Record<ViewMode, RenderModel> = {
+    diff: { boxes: [], lines: [] },
+    before: { boxes: [], lines: [] },
+    after: { boxes: [], lines: [] },
   };
 
-  constructor() {
-    super();
+  #metadataDiffs: ReturnType<typeof DiffPresenter.compareMetadata> = [];
+  #navStack: { dataA: MaxPatchJSON | null; dataB: MaxPatchJSON | null }[] = [];
+
+  public zoomLevel = 1.0;
+  public viewMode: ViewMode = "diff";
+  public isPresentation = false;
+  public showRemovedPresentation = false;
+
+  get currentRenderData(): RenderModel {
+    return this.#models[this.viewMode];
   }
 
-  get state() {
-    return this.#state;
+  get currentMetadata() {
+    if (this.viewMode === "diff")
+      return { diffs: this.#metadataDiffs, meta: {} };
+    const data = this.viewMode === "before" ? this.#dataA : this.#dataB;
+    return { diffs: [], meta: DiffPresenter.getMetadata(data ?? undefined) };
   }
 
-  get currentRenderData(): { boxes: any[]; lines: any[] } {
-    const { viewMode, dataA, dataB, diffData } = this.#state;
-    if (viewMode === "before") {
-      return dataA
-        ? DiffPresenter.process(dataA, dataA)
-        : { boxes: [], lines: [] };
-    }
-    if (viewMode === "after") {
-      return dataB
-        ? DiffPresenter.process(dataB, dataB)
-        : { boxes: [], lines: [] };
-    }
-    return diffData || { boxes: [], lines: [] };
+  get hasParent() {
+    return this.#navStack.length > 0;
   }
 
-  get currentMetadata(): { diffs: any[]; meta: any } {
-    const { viewMode, dataA, dataB, metadataDiffs } = this.#state;
-    if (viewMode === "diff") {
-      return { diffs: metadataDiffs, meta: {} };
-    }
-    const data = viewMode === "before" ? dataA : dataB;
-    return { diffs: [], meta: data ? DiffPresenter.getMetadata(data) : {} };
-  }
-
-  setFileA(data: any): void {
-    this.#state.dataA = data;
+  setFileA(data: MaxPatchJSON): void {
+    this.#dataA = data;
     this.#recalculate();
   }
 
-  setFileB(data: any): void {
-    this.#state.dataB = data;
+  setFileB(data: MaxPatchJSON): void {
+    this.#dataB = data;
     this.#recalculate();
   }
 
-  setInitialData(dataA: any, dataB: any): void {
-    this.#state.dataA = dataA;
-    this.#state.dataB = dataB;
+  setInitialData(dataA: MaxPatchJSON, dataB: MaxPatchJSON): void {
+    this.#dataA = dataA;
+    this.#dataB = dataB;
     this.#recalculate();
   }
 
   setZoom(level: number, pivot?: { x: number; y: number }): void {
     const newLevel = Math.max(0.2, Math.min(level, 3.0));
-    if (newLevel === this.#state.zoomLevel) return;
-    this.#state.zoomLevel = newLevel;
+    if (newLevel === this.zoomLevel) return;
+    this.zoomLevel = newLevel;
     this.#notify("zoom", { pivot });
   }
 
-  setViewMode(mode: string): void {
-    if (this.#state.viewMode === mode) return;
-    this.#state.viewMode = mode;
+  setViewMode(mode: ViewMode): void {
+    if (this.viewMode === mode) return;
+    this.viewMode = mode;
     this.#notify("view");
   }
 
   togglePresentation(active: boolean): void {
-    if (this.#state.isPresentation === active) return;
-    this.#state.isPresentation = active;
+    if (this.isPresentation === active) return;
+    this.isPresentation = active;
     this.#notify("view");
   }
 
   toggleShowRemovedPresentation(active: boolean): void {
-    if (this.#state.showRemovedPresentation === active) return;
-    this.#state.showRemovedPresentation = active;
+    if (this.showRemovedPresentation === active) return;
+    this.showRemovedPresentation = active;
     this.#notify("view");
   }
 
   resetLayout(): void {
-    this.#state.zoomLevel = 1.0;
+    this.zoomLevel = 1.0;
     this.#recalculate();
     this.#notify("layout-reset");
   }
 
-  pushSubpatch(pA: any, pB: any): void {
-    this.#state.navStack.push({
-      dataA: this.#state.dataA,
-      dataB: this.#state.dataB,
-      diffData: this.#state.diffData,
-      metadataDiffs: this.#state.metadataDiffs,
-    });
-
-    this.#state.dataA = pA ? { patcher: pA } : null;
-    this.#state.dataB = pB ? { patcher: pB } : null;
-
-    this.#recalculate(true);
+  pushSubpatch(pA?: MaxPatchJSON, pB?: MaxPatchJSON): void {
+    this.#navStack.push({ dataA: this.#dataA, dataB: this.#dataB });
+    this.#dataA = pA ? ({ patcher: pA } as MaxPatchJSON) : null;
+    this.#dataB = pB ? ({ patcher: pB } as MaxPatchJSON) : null;
+    this.#recalculate("navigation");
   }
 
   popSubpatch(): void {
-    if (this.#state.navStack.length === 0) return;
-
-    const prev = this.#state.navStack.pop();
-    this.#state.dataA = prev.dataA;
-    this.#state.dataB = prev.dataB;
-    this.#state.diffData = prev.diffData;
-    this.#state.metadataDiffs = prev.metadataDiffs;
-
-    this.#notify("data");
+    const prev = this.#navStack.pop();
+    if (!prev) return;
+    this.#dataA = prev.dataA;
+    this.#dataB = prev.dataB;
+    this.#recalculate("data");
   }
 
-  #recalculate(isNavigation: boolean = false): void {
-    if (!this.#state.dataA && !this.#state.dataB) {
-      this.#state.diffData = null;
-      this.#state.metadataDiffs = [];
-    } else {
-      this.#state.diffData = DiffPresenter.process(
-        this.#state.dataA,
-        this.#state.dataB,
-      );
-      this.#state.metadataDiffs = DiffPresenter.compareMetadata(
-        this.#state.dataA,
-        this.#state.dataB,
-      );
-    }
-    this.#notify(isNavigation ? "navigation" : "data");
+  #recalculate(eventType: string = "data"): void {
+    this.#models.diff = DiffPresenter.process(
+      this.#dataA ?? undefined,
+      this.#dataB ?? undefined,
+    );
+    this.#models.before = DiffPresenter.process(
+      this.#dataA ?? undefined,
+      this.#dataA ?? undefined,
+    );
+    this.#models.after = DiffPresenter.process(
+      this.#dataB ?? undefined,
+      this.#dataB ?? undefined,
+    );
+    this.#metadataDiffs = DiffPresenter.compareMetadata(
+      this.#dataA ?? undefined,
+      this.#dataB ?? undefined,
+    );
+    this.#notify(eventType);
   }
 
-  #notify(type: string, extras: any = {}): void {
+  #notify(type: string, extras: Record<string, unknown> = {}): void {
     this.dispatchEvent(
-      new CustomEvent("state-change", {
-        detail: { type, state: this.#state, ...extras },
-      }),
+      new CustomEvent("state-change", { detail: { type, ...extras } }),
     );
   }
 }

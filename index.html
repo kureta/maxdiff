@@ -16,34 +16,20 @@
           >New: <input accept=".maxpat" id="fileInputB" type="file"
         /></label>
       </div>
-      <div id="view-toggles" style="display: none;">
+      <div id="view-toggles" style="display: none">
         <label><input name="view" type="radio" value="before" /> Before</label>
         <label><input name="view" type="radio" value="after" /> After</label>
         <label
           ><input checked name="view" type="radio" value="diff" /> Diff</label
         >
       </div>
-      <div style="display: flex;
-align-items: center;">
-        <input
-          id="presentation-toggle"
-          style="margin-right: 5px;"
-          type="checkbox"
-        />
+      <div class="toggle-group">
+        <input id="presentation-toggle" type="checkbox" />
         <label for="presentation-toggle">Presentation View</label>
       </div>
-      <div
-        id="show-removed-container"
-        style="display: flex;
-align-items: center;"
-        hidden
-      >
-        <input
-          id="show-removed-toggle"
-          style="margin-right: 5px;"
-          type="checkbox"
-        />
-        <label for="show-removed-toggle">Show removed from presentation</label>
+      <div id="show-removed-container" class="toggle-group" hidden>
+        <input id="show-removed-toggle" type="checkbox" />
+        <label for="show-removed-toggle">Show removed</label>
       </div>
       <div id="zoom-controls">
         <button id="btn-zoom-out">-</button>
@@ -51,20 +37,18 @@ align-items: center;"
         <button id="btn-zoom-in">+</button>
       </div>
       <button id="btn-reset-layout">Reset Layout</button>
-      <button id="btn-metadata" style="display: none;">Metadata</button>
-      <button id="btn-ignored-diffs" style="display: none;">
-        Ignored Diffs
-      </button>
+      <button id="btn-metadata" style="display: none">Metadata</button>
     </div>
+
     <div id="viewport">
       <div id="patcher-wrapper">
         <max-patcher id="patcher"></max-patcher>
       </div>
     </div>
 
-    <div class="modal" id="details-modal" style="display: none;">
+    <div class="modal" id="details-modal">
       <div class="modal-content">
-        <span class="close-button">&times;</span>
+        <span class="close-button" id="btn-close-modal">&times;</span>
         <h3>Attribute Changes</h3>
         <div id="diff-content"></div>
       </div>
@@ -78,15 +62,6 @@ align-items: center;"
       <div id="metadata-content"></div>
     </div>
 
-    <div class="sidebar" id="ignored-sidebar">
-      <div class="sidebar-header">
-        <h3>Ignored Diffs</h3>
-        <button id="btn-close-ignored-sidebar">&times;</button>
-      </div>
-      <div id="ignored-content"></div>
-    </div>
-
-    <script src="dist/app.js" type="module">
-</script>
+    <script src="dist/app.js" type="module"></script>
   </body>
 </html>

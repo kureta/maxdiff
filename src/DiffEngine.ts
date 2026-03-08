@@ -1,6 +1,6 @@
-type Rect = [number, number, number, number];
+export type Rect = [number, number, number, number];
 
-interface Box {
+export interface Box {
   id: string;
   maxclass: string;
   numinlets: number;
@@ -13,62 +13,42 @@ interface Box {
   [key: string]: unknown;
 }
 
-interface PatchLine {
+export interface PatchLine {
   source: [string, number];
   destination: [string, number];
 }
 
-interface Patcher {
-  boxes: BoxContainer[];
-  lines: PatchLineContainer[];
+export interface Patcher {
+  boxes: { box: Box }[];
+  lines: { patchline: PatchLine }[];
   rect: Rect;
   [key: string]: unknown;
 }
 
-interface BoxContainer {
-  box: Box;
-}
-
-interface PatchLineContainer {
-  patchline: PatchLine;
-}
-
-interface MaxPatchJSON {
+export interface MaxPatchJSON {
   patcher: Patcher;
 }
 
-type DiffOperation<T extends object> =
+export interface FieldDelta {
+  from: unknown;
+  to: unknown;
+}
+
+export type DiffOperation<T extends object> =
   | { type: "added"; current: T }
   | { type: "deleted"; previous: T }
   | {
-      type: "modified";
-      previous: T;
-      current: T;
-      fields: Partial<Record<keyof T, FieldDelta>>;
-    }
-  | {
-      type: "moved";
+      type: "modified" | "moved";
       previous: T;
       current: T;
       fields: Partial<Record<keyof T, FieldDelta>>;
     };
 
-interface FieldDelta {
-  from: unknown;
-  to: unknown;
-}
-
-type DiffCollection<T extends object> = DiffOperation<T>[];
-
-// TODO: Recursively serialize the json. Top level is a Patcher object.
-//  Box serializer should call patcher serializer when it sees a subpatch box.
-//  These type of boxes have a "patcher" attribute.
+export type DiffCollection<T extends object> = DiffOperation<T>[];
 
 export class MaxDiff {
   public static getClass(box: Box): string {
-    if (box.maxclass && box.maxclass !== "newobj") {
-      return box.maxclass;
-    }
+    if (box.maxclass && box.maxclass !== "newobj") return box.maxclass;
     return (box.text || "").split(" ")[0];
   }
 
@@ -78,8 +58,13 @@ export class MaxDiff {
   ): DiffCollection<Box> {
     const boxesA = patchA.patcher.boxes.map((b) => b.box);
     const boxesB = patchB.patcher.boxes.map((b) => b.box);
-    const linesA = patchA.patcher.lines?.map((l) => l.patchline) || [];
-    const linesB = patchB.patcher.lines?.map((l) => l.patchline) || [];
+    const linesA = patchA.patcher.lines?.map((l) => l.patchline) ?? [];
+    const linesB = patchB.patcher.lines?.map((l) => l.patchline) ?? [];
+
+    console.debug("===== Comparing =====");
+    console.debug(
+      `Before state: ${boxesA.length} boxes\nAfter state: ${boxesB.length} boxes`,
+    );
 
     const mapA = new Map<string, Box>(boxesA.map((b) => [b.id, b]));
     const mapB = new Map<string, Box>(boxesB.map((b) => [b.id, b]));
@@ -88,15 +73,23 @@ export class MaxDiff {
     const anchoredIds = new Set<string>();
     const matchedBIds = new Set<string>();
 
+    const anchorPair = (idA: string, idB: string, boxA: Box, boxB: Box) => {
+      matchedPairs.push([boxA, boxB]);
+      anchoredIds.add(idA);
+      matchedBIds.add(idB);
+    };
+
+    let num_anchors: number = 0;
     // Pass 1: Strict ID and Class match
-    for (const [id, boxA] of mapA.entries()) {
+    for (const [id, boxA] of mapA) {
       const boxB = mapB.get(id);
       if (boxB && this.getClass(boxA) === this.getClass(boxB)) {
-        matchedPairs.push([boxA, boxB]);
-        anchoredIds.add(id);
-        matchedBIds.add(id);
+        anchorPair(id, id, boxA, boxB);
+        num_anchors += 1;
       }
     }
+
+    console.debug(`Found ${num_anchors} anchor pairs.`);
 
     // Pass 2: Topological connection match
     const getSignature = (boxId: string, lines: PatchLine[]) => {
@@ -112,58 +105,48 @@ export class MaxDiff {
       return sig.sort().join("|");
     };
 
-    for (const [idA, boxA] of mapA.entries()) {
+    let num_topos: number = 0;
+    for (const [idA, boxA] of mapA) {
       if (anchoredIds.has(idA)) continue;
-
       const sigA = getSignature(idA, linesA);
       if (!sigA) continue;
 
-      for (const [idB, boxB] of mapB.entries()) {
+      for (const [idB, boxB] of mapB) {
         if (matchedBIds.has(idB)) continue;
-
-        if (this.getClass(boxA) === this.getClass(boxB)) {
-          const sigB = getSignature(idB, linesB);
-          if (sigA === sigB) {
-            matchedPairs.push([boxA, boxB]);
-            anchoredIds.add(idA);
-            matchedBIds.add(idB);
-            break;
-          }
+        if (
+          this.getClass(boxA) === this.getClass(boxB) &&
+          sigA === getSignature(idB, linesB)
+        ) {
+          anchorPair(idA, idB, boxA, boxB);
+          num_topos += 1;
+          break;
         }
       }
     }
 
+    console.debug(`Found ${num_topos} boxes with similar connections.`);
+
     const diff: DiffCollection<Box> = [];
 
-    // Compute diffs for all matched pairs
+    // Compute modifications
     for (const [boxA, boxB] of matchedPairs) {
       const fields: Partial<Record<keyof Box, FieldDelta>> = {};
-      let isModified = false;
-
       const allKeys = new Set([...Object.keys(boxA), ...Object.keys(boxB)]);
       allKeys.delete("id");
 
       for (const key of allKeys) {
-        const valA = boxA[key];
-        const valB = boxB[key];
-
-        if (JSON.stringify(valA) !== JSON.stringify(valB)) {
-          fields[key] = { from: valA, to: valB };
-          isModified = true;
+        if (JSON.stringify(boxA[key]) !== JSON.stringify(boxB[key])) {
+          fields[key] = { from: boxA[key], to: boxB[key] };
         }
       }
 
-      if (isModified) {
-        const changedKeys = Object.keys(fields);
-        const isOnlyCosmetic = changedKeys.every(
-          (key) =>
-            key === "patching_rect" ||
-            key === "presentation_rect" ||
-            key === "rect",
+      const changedKeys = Object.keys(fields);
+      if (changedKeys.length > 0) {
+        const isMoved = changedKeys.every((k) =>
+          ["patching_rect", "presentation_rect", "rect"].includes(k),
         );
-
         diff.push({
-          type: isOnlyCosmetic ? "moved" : "modified",
+          type: isMoved ? "moved" : "modified",
           previous: boxA,
           current: boxB,
           fields,
@@ -171,17 +154,11 @@ export class MaxDiff {
       }
     }
 
-    for (const [id, boxA] of mapA.entries()) {
-      if (!anchoredIds.has(id)) {
-        diff.push({ type: "deleted", previous: boxA });
-      }
-    }
-
-    for (const [id, boxB] of mapB.entries()) {
-      if (!matchedBIds.has(id)) {
-        diff.push({ type: "added", current: boxB });
-      }
-    }
+    // Unmatched deletions and additions
+    for (const [id, boxA] of mapA)
+      if (!anchoredIds.has(id)) diff.push({ type: "deleted", previous: boxA });
+    for (const [id, boxB] of mapB)
+      if (!matchedBIds.has(id)) diff.push({ type: "added", current: boxB });
 
     return diff;
   }

@@ -1,32 +1,38 @@
-import { MaxDiff } from "./DiffEngine.js";
+import { MaxDiff, MaxPatchJSON, PatchLine } from "./DiffEngine.js";
+import { BoxViewModel, LineViewModel } from "./components.js";
 
 export class DiffPresenter {
-  /**
-   * Projects the pure DiffCollection into the View-Model expected by MaxPatcher.
-   */
-  static process(patchA: any, patchB: any) {
-    const safePatchA = patchA?.patcher
+  // NOTE: Hidden attributes
+  static excludedKeys: Set<string> = new Set([
+    "patcher",
+    "id",
+    "patching_rect",
+    "presentation_rect",
+    "rect",
+  ]);
+  static process(
+    patchA?: MaxPatchJSON,
+    patchB?: MaxPatchJSON,
+  ): { boxes: BoxViewModel[]; lines: LineViewModel[] } {
+    const safeA = patchA?.patcher
       ? patchA
-      : { patcher: { boxes: [], lines: [] } };
-    const safePatchB = patchB?.patcher
+      : { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
+    const safeB = patchB?.patcher
       ? patchB
-      : { patcher: { boxes: [], lines: [] } };
+      : { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
 
-    const diffs = MaxDiff.compare(safePatchA, safePatchB);
+    const diffs = MaxDiff.compare(safeA as MaxPatchJSON, safeB as MaxPatchJSON);
+    const boxesB = safeB.patcher.boxes.map((b) => b.box);
 
-    const boxesB = safePatchB.patcher.boxes.map((b: any) => b.box);
-
-    const diffBoxes = [];
-    const diffMap = new Map();
+    const diffBoxes: BoxViewModel[] = [];
+    const diffMap = new Map(
+      diffs.map((op) => [
+        op.type === "deleted" ? op.previous.id : op.current.id,
+        op,
+      ]),
+    );
     const idMapAtoB = new Map<string, string>();
 
-    // 1. Index the pure diff operations by target box ID
-    for (const op of diffs) {
-      if (op.type === "deleted") diffMap.set(op.previous.id, op);
-      else diffMap.set(op.current.id, op);
-    }
-
-    // 2. Map New Patch Boxes (Unchanged, Added, Modified, Moved)
     for (const boxB of boxesB) {
       const op = diffMap.get(boxB.id);
 
@@ -36,7 +42,7 @@ export class DiffPresenter {
           diffState: "unchanged",
           patcherA: boxB.patcher,
           patcherB: boxB.patcher,
-        });
+        } as BoxViewModel);
         idMapAtoB.set(boxB.id, boxB.id);
         continue;
       }
@@ -47,16 +53,15 @@ export class DiffPresenter {
           diffState: "added",
           patcherA: null,
           patcherB: boxB.patcher,
-        });
+        } as BoxViewModel);
       } else if (op.type === "modified" || op.type === "moved") {
-        const attrDiffs = Object.entries(op.fields).map(
-          ([key, delta]: [string, any]) => ({
+        const attrDiffs = Object.entries(op.fields)
+          .filter(([key]) => !this.excludedKeys.has(key))
+          .map(([key, delta]) => ({
             key,
             old: delta.from,
             new: delta.to,
-          }),
-        );
-
+          }));
         diffBoxes.push({
           ...boxB,
           diffState: op.type,
@@ -64,56 +69,50 @@ export class DiffPresenter {
           patcherA: op.previous.patcher,
           patcherB: boxB.patcher,
           oldText: op.previous.text ?? op.previous.maxclass,
-        });
+        } as BoxViewModel);
         idMapAtoB.set(op.previous.id, boxB.id);
       }
     }
 
-    // 3. Map Old Patch Boxes (Deleted)
     for (const op of diffs) {
       if (op.type === "deleted") {
         diffBoxes.push({
           ...op.previous,
-          id: op.previous.id + "_removed",
+          id: `${op.previous.id}_removed`,
           diffState: "removed",
           patcherA: op.previous.patcher,
           patcherB: null,
-        });
+        } as BoxViewModel);
       }
     }
 
-    // 4. Resolve Lines based on mapped Box IDs
-    const linesA = safePatchA.patcher.lines?.map((l: any) => l.patchline) || [];
-    const linesB = safePatchB.patcher.lines?.map((l: any) => l.patchline) || [];
-    const diffLines = this.processLines(linesA, linesB, idMapAtoB);
+    const linesA = safeA.patcher.lines?.map((l) => l.patchline) ?? [];
+    const linesB = safeB.patcher.lines?.map((l) => l.patchline) ?? [];
 
     return {
       boxes: structuredClone(diffBoxes),
-      lines: structuredClone(diffLines),
+      lines: structuredClone(this.processLines(linesA, linesB, idMapAtoB)),
     };
   }
 
   private static processLines(
-    linesA: any[],
-    linesB: any[],
+    linesA: PatchLine[],
+    linesB: PatchLine[],
     idMapAtoB: Map<string, string>,
-  ) {
-    const diffLines = [];
-    const getLineKey = (src: any[], dst: any[]) =>
+  ): LineViewModel[] {
+    const diffLines: LineViewModel[] = [];
+    const getLineKey = (src: [string, number], dst: [string, number]) =>
       `${src.join(",")}-${dst.join(",")}`;
     const linesMapB = new Map(
       linesB.map((l) => [getLineKey(l.source, l.destination), l]),
     );
-    const processedLinesB = new Set();
-
-    const getOutputIdForA = (id: string) =>
-      idMapAtoB.has(id) ? idMapAtoB.get(id) : id + "_removed";
+    const processedLinesB = new Set<string>();
 
     for (const lA of linesA) {
       const mappedSrcId = idMapAtoB.get(lA.source[0]);
       const mappedDstId = idMapAtoB.get(lA.destination[0]);
 
-      if (mappedSrcId !== undefined && mappedDstId !== undefined) {
+      if (mappedSrcId && mappedDstId) {
         const keyInB = getLineKey(
           [mappedSrcId, lA.source[1]],
           [mappedDstId, lA.destination[1]],
@@ -129,8 +128,11 @@ export class DiffPresenter {
 
       diffLines.push({
         ...lA,
-        source: [getOutputIdForA(lA.source[0]), lA.source[1]],
-        destination: [getOutputIdForA(lA.destination[0]), lA.destination[1]],
+        source: [mappedSrcId ?? `${lA.source[0]}_removed`, lA.source[1]],
+        destination: [
+          mappedDstId ?? `${lA.destination[0]}_removed`,
+          lA.destination[1],
+        ],
         diffState: "removed",
       });
     }
@@ -143,15 +145,17 @@ export class DiffPresenter {
     return diffLines;
   }
 
-  static getMetadata(data: any) {
-    const { boxes, lines, ...metadata } = data?.patcher ?? {};
+  static getMetadata(data?: MaxPatchJSON): Record<string, unknown> {
+    if (!data?.patcher) return {};
+    // NOTE: Hidden attributes
+    const { boxes, lines, rect, ...metadata } = data.patcher;
     return metadata;
   }
 
-  static compareMetadata(dataA: any, dataB: any) {
+  static compareMetadata(dataA?: MaxPatchJSON, dataB?: MaxPatchJSON) {
     const metaA = this.getMetadata(dataA);
     const metaB = this.getMetadata(dataB);
-    const diffs = [];
+    const diffs: { key: string; old?: unknown; new?: unknown }[] = [];
     const allKeys = new Set([...Object.keys(metaA), ...Object.keys(metaB)]);
 
     for (const key of allKeys) {

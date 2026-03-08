@@ -5,12 +5,13 @@ import socketserver
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, override
 
 
 class DiffHandler(http.server.SimpleHTTPRequestHandler):
     """Handles requests for the diff tool UI and data."""
 
+    @override
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress logging to keep console clean."""
 
@@ -30,12 +31,13 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
                 start = content.find(b"{", max(0, start_idx))
                 end = content.rfind(b"}")
                 if -1 < start < end:
-                    return json.loads(content[start: end + 1].decode("utf-8"))
+                    return json.loads(content[start : end + 1].decode("utf-8"))
 
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return None
 
+    @override
     def do_GET(self) -> None:
         if self.path == "/diff-data":
             self.send_response(200)
@@ -48,7 +50,7 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
                 "new": self.load_patch_json(server.new_file),
                 "filename": server.file_path,
             }
-            self.wfile.write(json.dumps(data).encode("utf-8"))
+            _ = self.wfile.write(json.dumps(data).encode("utf-8"))
         else:
             super().do_GET()
 
@@ -64,9 +66,14 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
 class DiffServer(socketserver.TCPServer):
     """A simple TCP server that stores diff-related file paths."""
 
-    def __init__(self, server_address: tuple[str, int],
-                 RequestHandlerClass: type[DiffHandler], old_file: str | Path,
-                 new_file: str | Path, file_path: str, ) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        RequestHandlerClass: type[DiffHandler],
+        old_file: str | Path,
+        new_file: str | Path,
+        file_path: str,
+    ) -> None:
         super().__init__(server_address, RequestHandlerClass)
         self.old_file: Final = old_file
         self.new_file: Final = new_file
@@ -75,12 +82,13 @@ class DiffServer(socketserver.TCPServer):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Max/MSP Patch Diff Tool")
-    parser.add_argument("args", nargs="*", help="Arguments")
+    _ = parser.add_argument("args", nargs="*", help="Arguments")
     raw_args = parser.parse_args().args
 
     cwd = Path.cwd()
     # Change to the script's directory to serve static files correctly
     import os
+
     os.chdir(Path(__file__).parent.resolve())
 
     match raw_args:
@@ -101,7 +109,7 @@ def main() -> None:
         port = httpd.server_address[1]
         url = f"http://localhost:{port}"
         print(f"Serving diff tool at {url}\nPress Ctrl+C to stop.")
-        webbrowser.open(url)
+        _ = webbrowser.open(url)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
