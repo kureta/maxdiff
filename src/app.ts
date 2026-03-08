@@ -412,7 +412,7 @@ class PatcherApp {
       .forEach((el) => {
         el.onmouseenter = () => {
           const boxId = el.dataset.boxId;
-          this.#elements.patcher.highlightBox(boxId);
+          this.#elements.patcher.highlightBox(boxId || "");
         };
         el.onmouseleave = () => {
           this.#elements.patcher.clearHighlight();

@@ -16,29 +16,31 @@
           >New: <input accept=".maxpat" id="fileInputB" type="file"
         /></label>
       </div>
-      <div id="view-toggles" style="display: none">
+      <div id="view-toggles" style="display: none;">
         <label><input name="view" type="radio" value="before" /> Before</label>
         <label><input name="view" type="radio" value="after" /> After</label>
         <label
           ><input checked name="view" type="radio" value="diff" /> Diff</label
         >
       </div>
-      <div style="display: flex; align-items: center">
+      <div style="display: flex;
+align-items: center;">
         <input
           id="presentation-toggle"
-          style="margin-right: 5px"
+          style="margin-right: 5px;"
           type="checkbox"
         />
         <label for="presentation-toggle">Presentation View</label>
       </div>
       <div
         id="show-removed-container"
-        style="display: flex; align-items: center"
+        style="display: flex;
+align-items: center;"
         hidden
       >
         <input
           id="show-removed-toggle"
-          style="margin-right: 5px"
+          style="margin-right: 5px;"
           type="checkbox"
         />
         <label for="show-removed-toggle">Show removed from presentation</label>
@@ -49,8 +51,8 @@
         <button id="btn-zoom-in">+</button>
       </div>
       <button id="btn-reset-layout">Reset Layout</button>
-      <button id="btn-metadata" style="display: none">Metadata</button>
-      <button id="btn-ignored-diffs" style="display: none">
+      <button id="btn-metadata" style="display: none;">Metadata</button>
+      <button id="btn-ignored-diffs" style="display: none;">
         Ignored Diffs
       </button>
     </div>
@@ -60,7 +62,7 @@
       </div>
     </div>
 
-    <div class="modal" id="details-modal" style="display: none">
+    <div class="modal" id="details-modal" style="display: none;">
       <div class="modal-content">
         <span class="close-button">&times;</span>
         <h3>Attribute Changes</h3>
@@ -84,6 +86,7 @@
       <div id="ignored-content"></div>
     </div>
 
-    <script src="dist/app.js" type="module"></script>
+    <script src="dist/app.js" type="module">
+</script>
   </body>
 </html>
