@@ -2,53 +2,55 @@ import "./components.js";
 import { MaxPatcher } from "./components.js";
 import { StateManager } from "./StateManager.js";
 
-/**
- * Main application controller for the Max Patch Diff Tool.
- */
 class PatcherApp {
   #state = new StateManager();
   #elements = {
-    patcher: document.getElementById("patcher")! as MaxPatcher,
-    wrapper: document.getElementById("patcher-wrapper")! as HTMLDivElement,
-    fileInputs: document.getElementById("file-inputs")! as HTMLDivElement,
-    viewToggles: document.getElementById("view-toggles")! as HTMLDivElement,
+    patcher: document.getElementById("patcher") as MaxPatcher,
+    wrapper: document.getElementById("patcher-wrapper") as HTMLDivElement,
+    fileInputs: document.getElementById("file-inputs") as HTMLDivElement,
+    viewToggles: document.getElementById("view-toggles") as HTMLDivElement,
     presentationToggle: document.getElementById(
       "presentation-toggle",
-    )! as HTMLInputElement,
+    ) as HTMLInputElement,
+    showRemovedToggle: document.getElementById(
+      "show-removed-toggle",
+    ) as HTMLInputElement,
+    showRemovedContainer: document.getElementById(
+      "show-removed-container",
+    ) as HTMLDivElement,
     btnResetLayout: document.getElementById(
       "btn-reset-layout",
-    )! as HTMLButtonElement,
-    btnMetadata: document.getElementById("btn-metadata")! as HTMLButtonElement,
-    modal: document.getElementById("details-modal")! as HTMLDivElement,
-    modalContent: document.getElementById("diff-content")! as HTMLDivElement,
-    closeModal: document.querySelector(".close-button")! as HTMLSpanElement,
-    sidebar: document.getElementById("metadata-sidebar")! as HTMLDivElement,
+    ) as HTMLButtonElement,
+    btnMetadata: document.getElementById("btn-metadata") as HTMLButtonElement,
+    modal: document.getElementById("details-modal") as HTMLDivElement,
+    modalContent: document.getElementById("diff-content") as HTMLDivElement,
+    closeModal: document.querySelector(".close-button") as HTMLSpanElement,
+    sidebar: document.getElementById("metadata-sidebar") as HTMLDivElement,
     sidebarContent: document.getElementById(
       "metadata-content",
-    )! as HTMLDivElement,
+    ) as HTMLDivElement,
     closeSidebar: document.getElementById(
       "btn-close-sidebar",
-    )! as HTMLButtonElement,
-    btnZoomIn: document.getElementById("btn-zoom-in")! as HTMLButtonElement,
-    btnZoomOut: document.getElementById("btn-zoom-out")! as HTMLButtonElement,
+    ) as HTMLButtonElement,
+    btnZoomIn: document.getElementById("btn-zoom-in") as HTMLButtonElement,
+    btnZoomOut: document.getElementById("btn-zoom-out") as HTMLButtonElement,
     btnZoomReset: document.getElementById(
       "btn-zoom-reset",
-    )! as HTMLButtonElement,
-    controls: document.getElementById("controls")! as HTMLDivElement,
+    ) as HTMLButtonElement,
+    controls: document.getElementById("controls") as HTMLDivElement,
     btnIgnoredDiffs: document.getElementById(
       "btn-ignored-diffs",
-    )! as HTMLButtonElement,
+    ) as HTMLButtonElement,
     ignoredSidebar: document.getElementById(
       "ignored-sidebar",
-    )! as HTMLDivElement,
+    ) as HTMLDivElement,
     ignoredContent: document.getElementById(
       "ignored-content",
-    )! as HTMLDivElement,
+    ) as HTMLDivElement,
     closeIgnoredSidebar: document.getElementById(
       "btn-close-ignored-sidebar",
-    )! as HTMLButtonElement,
-
-    fileInputA: document.getElementById("fileInputA")! as HTMLInputElement,
+    ) as HTMLButtonElement,
+    fileInputA: document.getElementById("fileInputA") as HTMLInputElement,
     fileInputB: document.getElementById("fileInputB") as HTMLInputElement,
   };
 
@@ -62,7 +64,7 @@ class PatcherApp {
     this.#init();
   }
 
-  async #init() {
+  async #init(): Promise<void> {
     await this.#loadInitialData();
   }
 
@@ -84,9 +86,10 @@ class PatcherApp {
     return btn;
   }
 
-  #setupEventListeners() {
+  #setupEventListeners(): void {
     const {
       presentationToggle,
+      showRemovedToggle,
       closeModal,
       modal,
       sidebar,
@@ -106,9 +109,12 @@ class PatcherApp {
     presentationToggle.onchange = () =>
       this.#state.togglePresentation(presentationToggle.checked);
 
+    showRemovedToggle.onchange = () =>
+      this.#state.toggleShowRemovedPresentation(showRemovedToggle.checked);
+
     const closeM = () => (modal.style.display = "none");
     closeModal.onclick = closeM;
-    window.onclick = (e) => {
+    window.onclick = (e: MouseEvent) => {
       if (e.target === modal) closeM();
     };
 
@@ -149,23 +155,23 @@ class PatcherApp {
       ignoredSidebar.classList.remove("open");
     };
 
-    btnZoomIn.onclick = (e) =>
+    btnZoomIn.onclick = (e: MouseEvent) =>
       this.#state.setZoom(this.#state.state.zoomLevel * 1.1, {
         x: e.clientX,
         y: e.clientY,
       });
-    btnZoomOut.onclick = (e) =>
+    btnZoomOut.onclick = (e: MouseEvent) =>
       this.#state.setZoom(this.#state.state.zoomLevel / 1.1, {
         x: e.clientX,
         y: e.clientY,
       });
-    btnZoomReset.onclick = (e) =>
+    btnZoomReset.onclick = (e: MouseEvent) =>
       this.#state.setZoom(1.0, {
         x: e.clientX,
         y: e.clientY,
       });
 
-    wrapper.onwheel = (e) => {
+    wrapper.onwheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const factor = e.deltaY > 0 ? 1 / 1.05 : 1.05;
@@ -178,29 +184,29 @@ class PatcherApp {
 
     this.#btnBack.onclick = () => this.#state.popSubpatch();
 
-    patcher.addEventListener("box-click", (e) => {
-      const { box, originalEvent } = e.detail;
+    patcher.addEventListener("box-click", (e: Event) => {
+      const { box, originalEvent } = (e as CustomEvent).detail;
       const isIndicator = originalEvent
         .composedPath()
-        .some((el) => el.classList?.contains("info-indicator"));
+        .some((el: HTMLElement) => el.classList?.contains("info-indicator"));
       if (isIndicator) this.#handleBoxClick(box);
     });
-    patcher.addEventListener("box-dblclick", (e) => {
-      const { box, originalEvent } = e.detail;
+    patcher.addEventListener("box-dblclick", (e: Event) => {
+      const { box, originalEvent } = (e as CustomEvent).detail;
       const isIndicator = originalEvent
         .composedPath()
-        .some((el) => el.classList?.contains("info-indicator"));
+        .some((el: HTMLElement) => el.classList?.contains("info-indicator"));
       if (!isIndicator) this.#handleBoxDblClick(box);
     });
 
     window.onpagehide = () => navigator.sendBeacon("/shutdown");
 
-    this.#state.addEventListener("state-change", (e) =>
-      this.#onStateChange(e.detail),
+    this.#state.addEventListener("state-change", (e: Event) =>
+      this.#onStateChange((e as CustomEvent).detail),
     );
   }
 
-  async #loadInitialData() {
+  async #loadInitialData(): Promise<void> {
     try {
       const res = await fetch("/diff-data");
       if (res.ok) {
@@ -217,7 +223,7 @@ class PatcherApp {
     }
   }
 
-  #onStateChange({ type, state, pivot }) {
+  #onStateChange({ type, state, pivot }: any): void {
     if (type === "data" || type === "navigation") {
       this.#elements.viewToggles.style.display = "block";
       this.#elements.btnMetadata.style.display = "inline-block";
@@ -234,13 +240,15 @@ class PatcherApp {
     }
   }
 
-  #updateView(state) {
-    const { patcher, presentationToggle } = this.#elements;
+  #updateView(state: any): void {
+    const { patcher, showRemovedContainer } = this.#elements;
     const mode = state.viewMode;
     const isPres = state.isPresentation;
 
     patcher.toggleAttribute("presentation", isPres);
     patcher.toggleAttribute("diff", mode === "diff");
+    patcher.showRemovedPresentation = state.showRemovedPresentation;
+    showRemovedContainer.hidden = !isPres;
 
     const renderData = this.#state.currentRenderData;
     patcher.patchData = renderData;
@@ -250,11 +258,11 @@ class PatcherApp {
     this.#renderIgnoredDiffs(renderData.boxes);
   }
 
-  #handleBoxClick(box) {
+  #handleBoxClick(box: any): void {
     if (box.diffState !== "modified" || !box.attrDiffs?.length) return;
 
     this.#elements.modalContent.innerHTML = box.attrDiffs
-      .map((d) => {
+      .map((d: any) => {
         if (d.key === "saved_attribute_attributes") {
           const oldA = d.old?.valueof ?? {},
             newA = d.new?.valueof ?? {};
@@ -278,7 +286,7 @@ class PatcherApp {
     }
   }
 
-  #formatAttrChange(key, oldV, newV) {
+  #formatAttrChange(key: string, oldV: any, newV: any): string {
     if (oldV === undefined) {
       return `
 <div class="attr-change">
@@ -304,7 +312,7 @@ class PatcherApp {
 `;
   }
 
-  #handleBoxDblClick(box) {
+  #handleBoxDblClick(box: any): void {
     const mode = this.#state.state.viewMode;
     const pA =
       mode === "before" ? box.patcher : mode === "diff" ? box.patcherA : null;
@@ -316,7 +324,7 @@ class PatcherApp {
     }
   }
 
-  #renderMetadata(meta, diffs) {
+  #renderMetadata(meta: any, diffs: any[]): void {
     const content =
       diffs.length > 0
         ? diffs
@@ -363,8 +371,8 @@ class PatcherApp {
     if (!hasMeta) this.#elements.sidebar.classList.remove("open");
   }
 
-  #renderIgnoredDiffs(boxes) {
-    const ignoredDiffs = [];
+  #renderIgnoredDiffs(boxes: any[]): void {
+    const ignoredDiffs: any[] = [];
     boxes.forEach((box) => {
       if (box.ignoredDiffs && box.ignoredDiffs.length > 0) {
         ignoredDiffs.push({ box, diffs: box.ignoredDiffs });
@@ -375,7 +383,7 @@ class PatcherApp {
       .map(({ box, diffs }) => {
         const diffsHtml = diffs
           .map(
-            (d) => `
+            (d: any) => `
 <div class="ignored-diff-item">
   <span class="ignored-key">${d.key}</span>:
   <span class="ignored-old">${JSON.stringify(d.old)}</span> ->
@@ -399,9 +407,8 @@ class PatcherApp {
     this.#elements.btnIgnoredDiffs.disabled = !hasIgnored;
     if (!hasIgnored) this.#elements.ignoredSidebar.classList.remove("open");
 
-    // Add hover listeners
     this.#elements.ignoredContent
-      .querySelectorAll(".ignored-box-group")
+      .querySelectorAll<HTMLDivElement>(".ignored-box-group")
       .forEach((el) => {
         el.onmouseenter = () => {
           const boxId = el.dataset.boxId;
@@ -413,13 +420,12 @@ class PatcherApp {
       });
   }
 
-  #applyZoom(level, pivot) {
+  #applyZoom(level: number, pivot?: { x: number; y: number }): void {
     const { wrapper, patcher, btnZoomReset } = this.#elements;
     const rect = wrapper.getBoundingClientRect();
     const px = pivot ? pivot.x - rect.left : wrapper.clientWidth / 2;
     const py = pivot ? pivot.y - rect.top : wrapper.clientHeight / 2;
 
-    // Get current scale from element to calculate ratio
     const matrix = new DOMMatrix(getComputedStyle(patcher).transform);
     const currentScale = matrix.a || 1;
 

@@ -563,60 +563,38 @@ export class MaxPanel extends MaxBox {
 /**
  * Main patcher component that renders boxes and lines.
  */
+// components.ts (Only showing the modified MaxPatcher class implementation)
 export class MaxPatcher extends HTMLElement {
-  #boxes = [];
-  #lines = [];
-  #isDiff = false;
-  #isPresentation = false;
-  #showRemovedPresentation = false;
-  #boxMap = new Map();
+  #boxes: any[] = [];
+  #lines: any[] = [];
+  #isDiff: boolean = false;
+  #isPresentation: boolean = false;
+  #showRemovedPresentation: boolean = false;
+  #boxMap: Map<string, any> = new Map();
+  private container: HTMLElement;
+  private svgLayer: HTMLElement;
 
-  static get observedAttributes() {
+  static get observedAttributes(): string[] {
     return ["presentation", "diff"];
   }
 
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this.shadowRoot.adoptedStyleSheets = [patcherStyle];
-    this.shadowRoot.innerHTML = `
-<div
-  id="controls"
-  style="position: absolute; top: 10px; right: 10px; z-index: 100"
->
-  <label
-    id="show-removed-label"
-    style="
-      display: none;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 5px;
-      border-radius: 4px;
-      font-family: sans-serif;
-      font-size: 12px;
-      cursor: pointer;
-      user-select: none;
-    "
-  >
-    <input type="checkbox" id="show-removed-check" /> Show removed from
-    presentation
-  </label>
-</div>
-<div id="container"></div>
-<svg id="svg-layer"></svg>
-`;
-    this.container = this.shadowRoot.getElementById("container");
-    this.svgLayer = this.shadowRoot.getElementById("svg-layer");
-    this.controls = this.shadowRoot.getElementById("show-removed-label");
-    this.checkbox = this.shadowRoot.getElementById("show-removed-check");
-
-    this.checkbox.addEventListener("change", () => {
-      this.#showRemovedPresentation = this.checkbox.checked;
-      this.render();
-    });
+    this.shadowRoot!.adoptedStyleSheets = [patcherStyle];
+    this.shadowRoot!.innerHTML = `<div id="container"></div>
+<svg id="svg-layer"></svg>`;
+    this.container = this.shadowRoot!.getElementById(
+      "container",
+    ) as HTMLElement;
+    this.svgLayer = this.shadowRoot!.getElementById("svg-layer") as HTMLElement;
   }
 
-  attributeChangedCallback(name, oldValue, newValue) {
+  attributeChangedCallback(
+    name: string,
+    oldValue: string | null,
+    newValue: string | null,
+  ): void {
     if (oldValue === newValue) return;
     if (name === "presentation") {
       this.#isPresentation = newValue !== null;
@@ -627,20 +605,27 @@ export class MaxPatcher extends HTMLElement {
     }
   }
 
-  set patchData({ boxes, lines }) {
+  set patchData({ boxes, lines }: { boxes: any[]; lines: any[] }) {
     this.#boxes = boxes;
     this.#lines = lines;
     this.render();
   }
 
-  render() {
+  set showRemovedPresentation(value: boolean) {
+    if (this.#showRemovedPresentation !== value) {
+      this.#showRemovedPresentation = value;
+      this.render();
+    }
+  }
+
+  get showRemovedPresentation(): boolean {
+    return this.#showRemovedPresentation;
+  }
+
+  render(): void {
     this.container.innerHTML = "";
     this.svgLayer.innerHTML = "";
     this.#boxMap.clear();
-
-    if (this.controls) {
-      this.controls.style.display = this.#isPresentation ? "block" : "none";
-    }
 
     let maxX = 0,
       maxY = 0;
@@ -652,7 +637,7 @@ export class MaxPatcher extends HTMLElement {
 
       if (this.#showRemovedPresentation) {
         const presentationDiff = b.attrDiffs?.find(
-          (d) => d.key === "presentation",
+          (d: any) => d.key === "presentation",
         );
         if (presentationDiff && presentationDiff.old === 1) return true;
       }
@@ -678,7 +663,7 @@ export class MaxPatcher extends HTMLElement {
     this.updateLines();
   }
 
-  updateLines() {
+  updateLines(): void {
     this.svgLayer.innerHTML = "";
     for (const line of this.#lines) {
       const src = this.#boxMap.get(line.source[0]);
@@ -693,11 +678,10 @@ export class MaxPatcher extends HTMLElement {
     }
   }
 
-  createConnectionPath(src, dst, line) {
+  createConnectionPath(src: any, dst: any, line: any): SVGPathElement {
     const sR = getBoxRect(src, this.#isPresentation);
     const dR = getBoxRect(dst, this.#isPresentation);
 
-    // If we can't find rects (e.g. subpatch navigation issue), skip
     if (!sR || !dR)
       return document.createElementNS("http://www.w3.org/2000/svg", "path");
 
@@ -722,26 +706,28 @@ export class MaxPatcher extends HTMLElement {
     return path;
   }
 
-  createBoxElement(box) {
+  createBoxElement(box: any): HTMLElement {
     const tag =
-      {
-        message: "max-message",
-        comment: "max-comment",
-        button: "max-button",
-        toggle: "max-toggle",
-        inlet: "max-inlet",
-        outlet: "max-outlet",
-        panel: "max-panel",
-        "bach.roll": "max-panel",
-        "bach.score": "max-panel",
-      }[box.maxclass] ?? "max-box";
+      (
+        {
+          message: "max-message",
+          comment: "max-comment",
+          button: "max-button",
+          toggle: "max-toggle",
+          inlet: "max-inlet",
+          outlet: "max-outlet",
+          panel: "max-panel",
+          "bach.roll": "max-panel",
+          "bach.score": "max-panel",
+        } as Record<string, string>
+      )[box.maxclass] ?? "max-box";
 
-    const el = document.createElement(tag);
+    const el = document.createElement(tag) as any;
     el.id = `box-${box.id}`;
     if (this.#isPresentation) el.setAttribute("presentation", "");
     el.data = box;
 
-    el.addEventListener("click", (e) => {
+    el.addEventListener("click", (e: MouseEvent) => {
       if (el.dataset.dragged) return;
       this.dispatchEvent(
         new CustomEvent("box-click", {
@@ -752,7 +738,7 @@ export class MaxPatcher extends HTMLElement {
       );
     });
 
-    el.addEventListener("dblclick", (e) => {
+    el.addEventListener("dblclick", (e: MouseEvent) => {
       this.dispatchEvent(
         new CustomEvent("box-dblclick", {
           detail: { box, originalEvent: e },
@@ -767,11 +753,11 @@ export class MaxPatcher extends HTMLElement {
     return el;
   }
 
-  makeDraggable(el, box) {
-    let startX, startY, initialPos;
-    let rafId = null;
+  makeDraggable(el: HTMLElement, box: any): void {
+    let startX: number, startY: number, initialPos: { x: number; y: number };
+    let rafId: number | null = null;
 
-    const onMouseMove = (e) => {
+    const onMouseMove = (e: MouseEvent) => {
       const dx = (e.clientX - startX) / (this.zoomLevel ?? 1);
       const dy = (e.clientY - startY) / (this.zoomLevel ?? 1);
 
@@ -797,11 +783,10 @@ export class MaxPatcher extends HTMLElement {
         el.style.left = `${nx}px`;
         el.style.top = `${ny}px`;
 
-        // Expand patcher if needed
-        const right = nx + parseFloat(el.style.width || 0);
-        const bottom = ny + parseFloat(el.style.height || 0);
-        const currentW = parseFloat(this.style.width || 0);
-        const currentH = parseFloat(this.style.height || 0);
+        const right = nx + parseFloat(el.style.width || "0");
+        const bottom = ny + parseFloat(el.style.height || "0");
+        const currentW = parseFloat(this.style.width || "0");
+        const currentH = parseFloat(this.style.height || "0");
 
         if (right > currentW) this.style.width = `${right + 20}px`;
         if (bottom > currentH) this.style.height = `${bottom + 20}px`;
@@ -821,14 +806,14 @@ export class MaxPatcher extends HTMLElement {
       setTimeout(() => delete el.dataset.dragged, 0);
     };
 
-    el.addEventListener("mousedown", (e) => {
+    el.addEventListener("mousedown", (e: MouseEvent) => {
       if (e.button !== 0) return;
       e.preventDefault();
       startX = e.clientX;
       startY = e.clientY;
       initialPos = {
-        x: parseFloat(el.style.left),
-        y: parseFloat(el.style.top),
+        x: parseFloat(el.style.left || "0"),
+        y: parseFloat(el.style.top || "0"),
       };
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
@@ -836,8 +821,8 @@ export class MaxPatcher extends HTMLElement {
     });
   }
 
-  highlightBox(boxId) {
-    const el = this.shadowRoot.getElementById(`box-${boxId}`);
+  highlightBox(boxId: string): void {
+    const el = this.shadowRoot!.getElementById(`box-${boxId}`);
     if (el) {
       el.classList.add("highlighted");
       el.scrollIntoView({
@@ -848,13 +833,13 @@ export class MaxPatcher extends HTMLElement {
     }
   }
 
-  clearHighlight() {
-    this.shadowRoot
-      .querySelectorAll(".highlighted")
-      .forEach((el) => el.classList.remove("highlighted"));
+  clearHighlight(): void {
+    this.shadowRoot!.querySelectorAll(".highlighted").forEach((el) =>
+      el.classList.remove("highlighted"),
+    );
   }
 
-  get zoomLevel() {
+  get zoomLevel(): number {
     const matrix = new DOMMatrix(getComputedStyle(this).transform);
     return matrix.a || 1;
   }

@@ -1,20 +1,18 @@
+// StateManager.ts
 import { DiffPresenter } from "./DiffPresenter.js";
 
-/**
- * Manages the application state and business logic.
- * Emits 'state-change' events when state updates.
- */
 export class StateManager extends EventTarget {
   #state = {
-    dataA: null,
-    dataB: null,
-    diffData: null,
+    dataA: null as any,
+    dataB: null as any,
+    diffData: null as any,
     zoomLevel: 1.0,
-    navStack: [],
-    viewMode: "diff", // 'before', 'after', 'diff'
+    navStack: [] as any[],
+    viewMode: "diff",
     isPresentation: false,
+    showRemovedPresentation: false,
     metadata: {},
-    metadataDiffs: [],
+    metadataDiffs: [] as any[],
   };
 
   constructor() {
@@ -25,10 +23,7 @@ export class StateManager extends EventTarget {
     return this.#state;
   }
 
-  /**
-   * Returns the data formatted for the patcher component based on current view mode.
-   */
-  get currentRenderData() {
+  get currentRenderData(): { boxes: any[]; lines: any[] } {
     const { viewMode, dataA, dataB, diffData } = this.#state;
     if (viewMode === "before") {
       return dataA
@@ -43,7 +38,7 @@ export class StateManager extends EventTarget {
     return diffData || { boxes: [], lines: [] };
   }
 
-  get currentMetadata() {
+  get currentMetadata(): { diffs: any[]; meta: any } {
     const { viewMode, dataA, dataB, metadataDiffs } = this.#state;
     if (viewMode === "diff") {
       return { diffs: metadataDiffs, meta: {} };
@@ -52,49 +47,54 @@ export class StateManager extends EventTarget {
     return { diffs: [], meta: data ? DiffPresenter.getMetadata(data) : {} };
   }
 
-  setFileA(data) {
+  setFileA(data: any): void {
     this.#state.dataA = data;
     this.#recalculate();
   }
 
-  setFileB(data) {
+  setFileB(data: any): void {
     this.#state.dataB = data;
     this.#recalculate();
   }
 
-  setInitialData(dataA, dataB) {
+  setInitialData(dataA: any, dataB: any): void {
     this.#state.dataA = dataA;
     this.#state.dataB = dataB;
     this.#recalculate();
   }
 
-  setZoom(level, pivot) {
+  setZoom(level: number, pivot?: { x: number; y: number }): void {
     const newLevel = Math.max(0.2, Math.min(level, 3.0));
     if (newLevel === this.#state.zoomLevel) return;
     this.#state.zoomLevel = newLevel;
     this.#notify("zoom", { pivot });
   }
 
-  setViewMode(mode) {
+  setViewMode(mode: string): void {
     if (this.#state.viewMode === mode) return;
     this.#state.viewMode = mode;
     this.#notify("view");
   }
 
-  togglePresentation(active) {
+  togglePresentation(active: boolean): void {
     if (this.#state.isPresentation === active) return;
     this.#state.isPresentation = active;
     this.#notify("view");
   }
 
-  resetLayout() {
+  toggleShowRemovedPresentation(active: boolean): void {
+    if (this.#state.showRemovedPresentation === active) return;
+    this.#state.showRemovedPresentation = active;
+    this.#notify("view");
+  }
+
+  resetLayout(): void {
     this.#state.zoomLevel = 1.0;
     this.#recalculate();
     this.#notify("layout-reset");
   }
 
-  pushSubpatch(pA, pB) {
-    // Save current state to stack
+  pushSubpatch(pA: any, pB: any): void {
     this.#state.navStack.push({
       dataA: this.#state.dataA,
       dataB: this.#state.dataB,
@@ -102,15 +102,13 @@ export class StateManager extends EventTarget {
       metadataDiffs: this.#state.metadataDiffs,
     });
 
-    // Set new data
     this.#state.dataA = pA ? { patcher: pA } : null;
     this.#state.dataB = pB ? { patcher: pB } : null;
 
-    // Recalculate diffs for the subpatch
     this.#recalculate(true);
   }
 
-  popSubpatch() {
+  popSubpatch(): void {
     if (this.#state.navStack.length === 0) return;
 
     const prev = this.#state.navStack.pop();
@@ -122,7 +120,7 @@ export class StateManager extends EventTarget {
     this.#notify("data");
   }
 
-  #recalculate(isNavigation = false) {
+  #recalculate(isNavigation: boolean = false): void {
     if (!this.#state.dataA && !this.#state.dataB) {
       this.#state.diffData = null;
       this.#state.metadataDiffs = [];
@@ -139,7 +137,7 @@ export class StateManager extends EventTarget {
     this.#notify(isNavigation ? "navigation" : "data");
   }
 
-  #notify(type, extras = {}) {
+  #notify(type: string, extras: any = {}): void {
     this.dispatchEvent(
       new CustomEvent("state-change", {
         detail: { type, state: this.#state, ...extras },

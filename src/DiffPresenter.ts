@@ -1,4 +1,4 @@
-import { MaxDiff } from "./NewDiffEngine.js";
+import { MaxDiff } from "./DiffEngine.js";
 
 export class DiffPresenter {
   /**
