@@ -175,22 +175,18 @@ boxStyles.replaceSync(`:host {
 `);
 
 const messageStyle = new CSSStyleSheet();
-messageStyle.replaceSync(
-  `:host {
+messageStyle.replaceSync(`:host {
   background-color: var(--bg-message, #555);
   border-radius: 10px;
 }
-`,
-);
+`);
 
 const commentStyle = new CSSStyleSheet();
-commentStyle.replaceSync(
-  `:host {
+commentStyle.replaceSync(`:host {
   background-color: transparent;
   border: none;
 }
-`,
-);
+`);
 
 const buttonStyle = new CSSStyleSheet();
 buttonStyle.replaceSync(`:host {
@@ -287,54 +283,91 @@ patcherStyle.replaceSync(`:host {
 }
 `);
 
-/**
- * Helper to get the correct rectangle for a box, considering presentation mode and diffs.
- */
-function getBoxRect(box, isPresentation) {
-  let rect = null;
+type Rect = [number, number, number, number];
+
+export interface BoxViewModel {
+  id: string;
+  maxclass: string;
+  text?: string;
+  name?: string;
+  numinlets?: number;
+  numoutlets?: number;
+  patching_rect?: Rect;
+  presentation_rect?: Rect;
+  presentation?: number;
+  diffState?: string;
+  oldText?: string;
+  attrDiffs?: { key: string; old?: any; new?: any }[];
+  patcher?: any;
+  patcherA?: any;
+  patcherB?: any;
+  saved_attribute_attributes?: {
+    valueof?: {
+      parameter_longname?: string;
+      parameter_shortname?: string;
+      [key: string]: unknown;
+    };
+  };
+  index?: number;
+  [key: string]: unknown;
+}
+
+export interface LineViewModel {
+  source: [string, number];
+  destination: [string, number];
+  diffState?: string;
+}
+
+function getBoxRect(box: BoxViewModel, isPresentation: boolean): Rect | null {
+  let rect: Rect | undefined | null = null;
   if (isPresentation) {
     rect = box.presentation_rect;
     if (!rect) {
       const oldRectDiff = box.attrDiffs?.find(
         (d) => d.key === "presentation_rect",
       );
-      if (oldRectDiff?.old) rect = oldRectDiff.old;
+      if (oldRectDiff?.old) {
+        rect = oldRectDiff.old as Rect;
+      }
     }
   }
-  return rect || box.patching_rect;
+  return rect || box.patching_rect || null;
 }
 
-/**
- * Base class for all Max objects.
- */
 export class MaxBox extends HTMLElement {
-  #data = null;
+  #data: BoxViewModel | null = null;
 
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this.shadowRoot.adoptedStyleSheets = [boxStyles];
+    this.shadowRoot!.adoptedStyleSheets = [boxStyles];
   }
 
-  static get observedAttributes() {
+  static get observedAttributes(): string[] {
     return ["presentation"];
   }
 
-  attributeChangedCallback(name, oldValue, newValue) {
-    if (name === "presentation" && oldValue !== newValue) this.updatePosition();
+  attributeChangedCallback(
+    name: string,
+    oldValue: string | null,
+    newValue: string | null,
+  ): void {
+    if (name === "presentation" && oldValue !== newValue) {
+      this.updatePosition();
+    }
   }
 
-  set data(value) {
+  set data(value: BoxViewModel | null) {
     this.#data = value;
     this.updatePosition();
     this.render();
   }
 
-  get data() {
+  get data(): BoxViewModel | null {
     return this.#data;
   }
 
-  updatePosition() {
+  updatePosition(): void {
     if (!this.#data) return;
 
     const rect = getBoxRect(this.#data, this.hasAttribute("presentation"));
@@ -349,8 +382,8 @@ export class MaxBox extends HTMLElement {
     });
   }
 
-  getDisplayName() {
-    const box = this.#data;
+  getDisplayName(): { main: string; sub: string | null } {
+    const box = this.#data!;
     const attrs = box.saved_attribute_attributes?.valueof ?? {};
     const pretty = attrs.parameter_longname ?? attrs.parameter_shortname;
     const basic = box.text ?? box.maxclass;
@@ -361,17 +394,22 @@ export class MaxBox extends HTMLElement {
         : (pretty ?? basic);
     const sub = pretty && pretty !== basic ? basic : null;
 
-    return { main, sub };
+    return { main: main as string, sub: sub as string | null };
   }
 
-  getInletsOutlets() {
+  getInletsOutlets(): string {
     const {
       numinlets = 1,
       numoutlets = 1,
       attrDiffs = [],
       diffState,
-    } = this.#data;
-    const createPoints = (num, className, stateClass = "") =>
+    } = this.#data!;
+
+    const createPoints = (
+      num: number,
+      className: string,
+      stateClass: string = "",
+    ) =>
       Array.from({ length: num }, (_, i) => {
         const left = `${(100 / (num + 1)) * (i + 1)}%`;
         return `
@@ -384,10 +422,11 @@ export class MaxBox extends HTMLElement {
       diffState === "modified"
         ? attrDiffs.find((d) => d.key === "numinlets")
         : null;
+
     if (inletDiff) {
       inletsHtml =
-        createPoints(inletDiff.old ?? 1, "inlet-point", "removed") +
-        createPoints(inletDiff.new ?? 1, "inlet-point", "added");
+        createPoints((inletDiff.old as number) ?? 1, "inlet-point", "removed") +
+        createPoints((inletDiff.new as number) ?? 1, "inlet-point", "added");
     } else {
       inletsHtml = createPoints(numinlets, "inlet-point");
     }
@@ -397,10 +436,15 @@ export class MaxBox extends HTMLElement {
       diffState === "modified"
         ? attrDiffs.find((d) => d.key === "numoutlets")
         : null;
+
     if (outletDiff) {
       outletsHtml =
-        createPoints(outletDiff.old ?? 1, "outlet-point", "removed") +
-        createPoints(outletDiff.new ?? 1, "outlet-point", "added");
+        createPoints(
+          (outletDiff.old as number) ?? 1,
+          "outlet-point",
+          "removed",
+        ) +
+        createPoints((outletDiff.new as number) ?? 1, "outlet-point", "added");
     } else {
       outletsHtml = createPoints(numoutlets, "outlet-point");
     }
@@ -408,9 +452,9 @@ export class MaxBox extends HTMLElement {
     return inletsHtml + outletsHtml;
   }
 
-  getContent() {
+  getContent(): string {
     const { main, sub } = this.getDisplayName();
-    const { diffState, oldText, text, maxclass } = this.#data;
+    const { diffState, oldText, text, maxclass } = this.#data!;
     const isModified = diffState === "modified";
 
     let contentHtml =
@@ -423,13 +467,16 @@ export class MaxBox extends HTMLElement {
 `
         : `<span class="main-text">${main}</span>`;
 
-    if (sub) contentHtml += `<span class="sub-text">(${sub})</span>`;
+    if (sub) {
+      contentHtml += `<span class="sub-text">(${sub})</span>`;
+    }
+
     return `
 <div class="box-content">${contentHtml}</div>
 `;
   }
 
-  render() {
+  render(): void {
     if (!this.#data) return;
     const {
       maxclass = "",
@@ -449,7 +496,7 @@ export class MaxBox extends HTMLElement {
     }
 
     const indicator =
-      diffState === "modified" && attrDiffs?.length > 0
+      diffState === "modified" && (attrDiffs?.length ?? 0) > 0
         ? `
 <div class="info-indicator">i</div>
 `
@@ -457,6 +504,7 @@ export class MaxBox extends HTMLElement {
 
     let presentationIndicator = "";
     const presentationDiff = attrDiffs?.find((d) => d.key === "presentation");
+
     if (presentationDiff) {
       if (presentationDiff.new === 1) {
         presentationIndicator = `
@@ -471,15 +519,15 @@ export class MaxBox extends HTMLElement {
       }
     }
 
-    this.shadowRoot.innerHTML = `${this.getContent()}${this.getInletsOutlets()}${indicator}${presentationIndicator}`;
+    this.shadowRoot!.innerHTML = `${this.getContent()}${this.getInletsOutlets()}${indicator}${presentationIndicator}`;
   }
 }
 
 export class MaxMessage extends MaxBox {
   constructor() {
     super();
-    this.shadowRoot.adoptedStyleSheets = [
-      ...this.shadowRoot.adoptedStyleSheets,
+    this.shadowRoot!.adoptedStyleSheets = [
+      ...this.shadowRoot!.adoptedStyleSheets,
       messageStyle,
     ];
   }
@@ -488,8 +536,8 @@ export class MaxMessage extends MaxBox {
 export class MaxComment extends MaxBox {
   constructor() {
     super();
-    this.shadowRoot.adoptedStyleSheets = [
-      ...this.shadowRoot.adoptedStyleSheets,
+    this.shadowRoot!.adoptedStyleSheets = [
+      ...this.shadowRoot!.adoptedStyleSheets,
       commentStyle,
     ];
   }
@@ -498,12 +546,12 @@ export class MaxComment extends MaxBox {
 export class MaxButton extends MaxBox {
   constructor() {
     super();
-    this.shadowRoot.adoptedStyleSheets = [
-      ...this.shadowRoot.adoptedStyleSheets,
+    this.shadowRoot!.adoptedStyleSheets = [
+      ...this.shadowRoot!.adoptedStyleSheets,
       buttonStyle,
     ];
   }
-  getContent() {
+  getContent(): string {
     return `
 <div class="bang-circle"></div>
 `;
@@ -513,12 +561,12 @@ export class MaxButton extends MaxBox {
 export class MaxToggle extends MaxBox {
   constructor() {
     super();
-    this.shadowRoot.adoptedStyleSheets = [
-      ...this.shadowRoot.adoptedStyleSheets,
+    this.shadowRoot!.adoptedStyleSheets = [
+      ...this.shadowRoot!.adoptedStyleSheets,
       buttonStyle,
     ];
   }
-  getContent() {
+  getContent(): string {
     return `
 <div class="box-content">X</div>
 `;
@@ -528,13 +576,13 @@ export class MaxToggle extends MaxBox {
 export class MaxIO extends MaxBox {
   constructor() {
     super();
-    this.shadowRoot.adoptedStyleSheets = [
-      ...this.shadowRoot.adoptedStyleSheets,
+    this.shadowRoot!.adoptedStyleSheets = [
+      ...this.shadowRoot!.adoptedStyleSheets,
       ioStyle,
     ];
   }
-  getContent() {
-    const b = this.data;
+  getContent(): string {
+    const b = this.data!;
     const num = `
 <div class="io-number">${b.index ?? 1}</div>
 `;
@@ -553,26 +601,23 @@ export class MaxOutlet extends MaxIO {}
 export class MaxPanel extends MaxBox {
   constructor() {
     super();
-    this.shadowRoot.adoptedStyleSheets = [
-      ...this.shadowRoot.adoptedStyleSheets,
+    this.shadowRoot!.adoptedStyleSheets = [
+      ...this.shadowRoot!.adoptedStyleSheets,
       panelStyle,
     ];
   }
 }
 
-/**
- * Main patcher component that renders boxes and lines.
- */
-// components.ts (Only showing the modified MaxPatcher class implementation)
 export class MaxPatcher extends HTMLElement {
-  #boxes: any[] = [];
-  #lines: any[] = [];
+  #boxes: BoxViewModel[] = [];
+  #lines: LineViewModel[] = [];
   #isDiff: boolean = false;
   #isPresentation: boolean = false;
   #showRemovedPresentation: boolean = false;
-  #boxMap: Map<string, any> = new Map();
-  private container: HTMLElement;
-  private svgLayer: HTMLElement;
+  #boxMap: Map<string, BoxViewModel> = new Map();
+
+  private container: HTMLDivElement;
+  private svgLayer: SVGSVGElement;
 
   static get observedAttributes(): string[] {
     return ["presentation", "diff"];
@@ -582,12 +627,15 @@ export class MaxPatcher extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.shadowRoot!.adoptedStyleSheets = [patcherStyle];
-    this.shadowRoot!.innerHTML = `<div id="container"></div>
+    this.shadowRoot!.innerHTML = `
+<div id="container"></div>
 <svg id="svg-layer"></svg>`;
     this.container = this.shadowRoot!.getElementById(
       "container",
-    ) as HTMLElement;
-    this.svgLayer = this.shadowRoot!.getElementById("svg-layer") as HTMLElement;
+    ) as HTMLDivElement;
+    this.svgLayer = this.shadowRoot!.getElementById(
+      "svg-layer",
+    ) as unknown as SVGSVGElement;
   }
 
   attributeChangedCallback(
@@ -605,7 +653,13 @@ export class MaxPatcher extends HTMLElement {
     }
   }
 
-  set patchData({ boxes, lines }: { boxes: any[]; lines: any[] }) {
+  set patchData({
+    boxes,
+    lines,
+  }: {
+    boxes: BoxViewModel[];
+    lines: LineViewModel[];
+  }) {
     this.#boxes = boxes;
     this.#lines = lines;
     this.render();
@@ -627,8 +681,8 @@ export class MaxPatcher extends HTMLElement {
     this.svgLayer.innerHTML = "";
     this.#boxMap.clear();
 
-    let maxX = 0,
-      maxY = 0;
+    let maxX = 0;
+    let maxY = 0;
 
     const visibleBoxes = this.#boxes.filter((b) => {
       if (!this.#isPresentation) return true;
@@ -637,7 +691,7 @@ export class MaxPatcher extends HTMLElement {
 
       if (this.#showRemovedPresentation) {
         const presentationDiff = b.attrDiffs?.find(
-          (d: any) => d.key === "presentation",
+          (d) => d.key === "presentation",
         );
         if (presentationDiff && presentationDiff.old === 1) return true;
       }
@@ -678,12 +732,17 @@ export class MaxPatcher extends HTMLElement {
     }
   }
 
-  createConnectionPath(src: any, dst: any, line: any): SVGPathElement {
+  createConnectionPath(
+    src: BoxViewModel,
+    dst: BoxViewModel,
+    line: LineViewModel,
+  ): SVGPathElement {
     const sR = getBoxRect(src, this.#isPresentation);
     const dR = getBoxRect(dst, this.#isPresentation);
 
-    if (!sR || !dR)
+    if (!sR || !dR) {
       return document.createElementNS("http://www.w3.org/2000/svg", "path");
+    }
 
     const sX =
       sR[0] + (sR[2] / ((src.numoutlets ?? 1) + 1)) * (line.source[1] + 1);
@@ -706,7 +765,7 @@ export class MaxPatcher extends HTMLElement {
     return path;
   }
 
-  createBoxElement(box: any): HTMLElement {
+  createBoxElement(box: BoxViewModel): HTMLElement {
     const tag =
       (
         {
@@ -722,7 +781,7 @@ export class MaxPatcher extends HTMLElement {
         } as Record<string, string>
       )[box.maxclass] ?? "max-box";
 
-    const el = document.createElement(tag) as any;
+    const el = document.createElement(tag) as MaxBox;
     el.id = `box-${box.id}`;
     if (this.#isPresentation) el.setAttribute("presentation", "");
     el.data = box;
@@ -753,8 +812,10 @@ export class MaxPatcher extends HTMLElement {
     return el;
   }
 
-  makeDraggable(el: HTMLElement, box: any): void {
-    let startX: number, startY: number, initialPos: { x: number; y: number };
+  makeDraggable(el: HTMLElement, box: BoxViewModel): void {
+    let startX: number;
+    let startY: number;
+    let initialPos: { x: number; y: number };
     let rafId: number | null = null;
 
     const onMouseMove = (e: MouseEvent) => {
@@ -777,8 +838,11 @@ export class MaxPatcher extends HTMLElement {
           this.#isPresentation && box.presentation_rect
             ? "presentation_rect"
             : "patching_rect";
+
         if (!box[rectProp]) box[rectProp] = [0, 0, 0, 0];
-        [box[rectProp][0], box[rectProp][1]] = [nx, ny];
+
+        box[rectProp]![0] = nx;
+        box[rectProp]![1] = ny;
 
         el.style.left = `${nx}px`;
         el.style.top = `${ny}px`;
@@ -845,7 +909,7 @@ export class MaxPatcher extends HTMLElement {
   }
 }
 
-const elements = {
+const elements: Record<string, CustomElementConstructor> = {
   "max-box": MaxBox,
   "max-message": MaxMessage,
   "max-comment": MaxComment,
