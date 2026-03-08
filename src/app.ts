@@ -223,19 +223,7 @@ class PatcherApp {
           .composedPath()
           .some((el: HTMLElement) => el.classList?.contains("info-indicator"))
       ) {
-        const pA =
-          state.viewMode === "before"
-            ? box.patcher
-            : state.viewMode === "diff"
-              ? box.patcherA
-              : null;
-        const pB =
-          state.viewMode === "after"
-            ? box.patcher
-            : state.viewMode === "diff"
-              ? box.patcherB
-              : null;
-        if (pA || pB) state.pushSubpatch(pA, pB);
+        this.#state.enterSubpatch(box.id);
       }
     });
 

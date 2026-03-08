@@ -1,5 +1,6 @@
+// StateManager.ts
 import { DiffPresenter } from "./DiffPresenter.js";
-import { MaxPatchJSON } from "./DiffEngine.js";
+import { MaxPatchJSON, MaxDiff, DiffOperation, Box } from "./DiffEngine.js";
 import { BoxViewModel, LineViewModel } from "./components.js";
 
 interface RenderModel {
@@ -12,6 +13,7 @@ export type ViewMode = "diff" | "before" | "after";
 export class StateManager extends EventTarget {
   #dataA: MaxPatchJSON | null = null;
   #dataB: MaxPatchJSON | null = null;
+  #rawDiffs: DiffOperation<Box>[] = [];
 
   #models: Record<ViewMode, RenderModel> = {
     diff: { boxes: [], lines: [] },
@@ -89,6 +91,46 @@ export class StateManager extends EventTarget {
     this.#notify("layout-reset");
   }
 
+  enterSubpatch(boxId: string): void {
+    const actualId = boxId.replace("_removed", "");
+    let pA = null;
+    let pB = null;
+
+    for (const op of this.#rawDiffs) {
+      if (op.type === "deleted" && op.previous.id === actualId) {
+        pA = op.previous.patcher;
+        break;
+      }
+      if (op.type === "added" && op.current.id === actualId) {
+        pB = op.current.patcher;
+        break;
+      }
+      if (
+        (op.type === "modified" || op.type === "moved") &&
+        (op.previous.id === actualId || op.current.id === actualId)
+      ) {
+        pA = op.previous.patcher;
+        pB = op.current.patcher;
+        break;
+      }
+    }
+
+    if (!pA && !pB) {
+      const boxA = this.#dataA?.patcher?.boxes?.find(
+        (b) => b.box.id === actualId,
+      )?.box;
+      const boxB = this.#dataB?.patcher?.boxes?.find(
+        (b) => b.box.id === actualId,
+      )?.box;
+      pA = boxA?.patcher;
+      pB = boxB?.patcher;
+    }
+
+    if (pA || pB) {
+      this.pushSubpatch(pA as any, pB as any);
+    }
+  }
+
   pushSubpatch(pA?: MaxPatchJSON, pB?: MaxPatchJSON): void {
     this.#navStack.push({ dataA: this.#dataA, dataB: this.#dataB });
     this.#dataA = pA ? ({ patcher: pA } as MaxPatchJSON) : null;
@@ -105,6 +147,19 @@ export class StateManager extends EventTarget {
   }
 
   #recalculate(eventType: string = "data"): void {
+    const safeA =
+      this.#dataA ??
+      ({
+        patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
+      } as unknown as MaxPatchJSON);
+    const safeB =
+      this.#dataB ??
+      ({
+        patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
+      } as unknown as MaxPatchJSON);
+
+    this.#rawDiffs = MaxDiff.compare(safeA, safeB);
+
     this.#models.diff = DiffPresenter.process(
       this.#dataA ?? undefined,
       this.#dataB ?? undefined,
