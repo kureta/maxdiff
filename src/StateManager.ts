@@ -1,6 +1,12 @@
 // StateManager.ts
 import { DiffPresenter } from "./DiffPresenter.js";
-import { MaxPatchJSON, MaxDiff, DiffOperation, Box } from "./DiffEngine.js";
+import {
+  MaxPatchJSON,
+  MaxDiff,
+  DiffOperation,
+  Box,
+  Patcher,
+} from "./DiffEngine.js";
 import { BoxViewModel, LineViewModel } from "./components.js";
 
 interface RenderModel {
@@ -131,7 +137,7 @@ export class StateManager extends EventTarget {
     }
   }
 
-  pushSubpatch(pA?: MaxPatchJSON, pB?: MaxPatchJSON): void {
+  pushSubpatch(pA?: Patcher, pB?: Patcher): void {
     this.#navStack.push({ dataA: this.#dataA, dataB: this.#dataB });
     this.#dataA = pA ? ({ patcher: pA } as MaxPatchJSON) : null;
     this.#dataB = pB ? ({ patcher: pB } as MaxPatchJSON) : null;
