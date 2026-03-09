@@ -25,16 +25,25 @@ export class DiffPresenter {
     const boxesB = safeB.patcher.boxes.map((b: any) => b.box);
 
     const diffBoxes: BoxViewModel[] = [];
-    const diffMap = new Map(
-      diffs.map((op) => [
-        op.type === "deleted" ? op.previous.id : op.current.id,
-        op,
-      ]),
+    // NOTE: Use separate maps to avoid key collisions when a heuristic match causes
+    // a B-side box ID to equal a deleted A-side box ID.
+    const diffMapByBId = new Map(
+      diffs
+        .filter((op) => op.type !== "deleted")
+        .map((op) => [op.current.id, op]),
+    );
+    const deletedMapByAId = new Map(
+      diffs
+        .filter(
+          (op): op is Extract<typeof op, { type: "deleted" }> =>
+            op.type === "deleted",
+        )
+        .map((op) => [op.previous.id, op]),
     );
     const idMapAtoB = new Map<string, string>();
 
     for (const boxB of boxesB) {
-      const op = diffMap.get(boxB.id);
+      const op = diffMapByBId.get(boxB.id);
 
       if (!op) {
         diffBoxes.push({
@@ -74,16 +83,14 @@ export class DiffPresenter {
       }
     }
 
-    for (const op of diffs) {
-      if (op.type === "deleted") {
-        diffBoxes.push({
-          ...op.previous,
-          id: `${op.previous.id}_removed`,
-          diffState: "removed",
-          patcherA: op.previous.patcher,
-          patcherB: null,
-        } as BoxViewModel);
-      }
+    for (const op of deletedMapByAId.values()) {
+      diffBoxes.push({
+        ...op.previous,
+        id: `${op.previous.id}_removed`,
+        diffState: "removed",
+        patcherA: op.previous.patcher,
+        patcherB: null,
+      } as BoxViewModel);
     }
 
     const linesA = safeA.patcher.lines?.map((l) => l.patchline) ?? [];
