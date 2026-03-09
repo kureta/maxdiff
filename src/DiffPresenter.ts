@@ -1,18 +1,19 @@
-import { MaxDiff, MaxPatchJSON, PatchLine } from "./DiffEngine.js";
+import { Box, DiffCollection, MaxPatchJSON, PatchLine } from "./DiffEngine.js";
 import { BoxViewModel, LineViewModel } from "./components.js";
 
 export class DiffPresenter {
   // NOTE: Hidden attributes
   static excludedKeys: Set<string> = new Set([
     "patcher",
-    "id",
+    // "id",
     "patching_rect",
     "presentation_rect",
     "rect",
   ]);
   static process(
-    patchA?: MaxPatchJSON,
-    patchB?: MaxPatchJSON,
+    patchA: MaxPatchJSON | undefined,
+    patchB: MaxPatchJSON | undefined,
+    diffs: DiffCollection<Box>,
   ): { boxes: BoxViewModel[]; lines: LineViewModel[] } {
     const safeA = patchA?.patcher
       ? patchA
@@ -21,8 +22,7 @@ export class DiffPresenter {
       ? patchB
       : { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
 
-    const diffs = MaxDiff.compare(safeA as MaxPatchJSON, safeB as MaxPatchJSON);
-    const boxesB = safeB.patcher.boxes.map((b) => b.box);
+    const boxesB = safeB.patcher.boxes.map((b: any) => b.box);
 
     const diffBoxes: BoxViewModel[] = [];
     const diffMap = new Map(
@@ -59,8 +59,8 @@ export class DiffPresenter {
           .filter(([key]) => !this.excludedKeys.has(key))
           .map(([key, delta]) => ({
             key,
-            old: delta.from,
-            new: delta.to,
+            old: delta?.from,
+            new: delta?.to,
           }));
         diffBoxes.push({
           ...boxB,

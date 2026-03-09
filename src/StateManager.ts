@@ -163,14 +163,17 @@ export class StateManager extends EventTarget {
     this.#models.diff = DiffPresenter.process(
       this.#dataA ?? undefined,
       this.#dataB ?? undefined,
+      this.#rawDiffs,
     );
     this.#models.before = DiffPresenter.process(
       this.#dataA ?? undefined,
       this.#dataA ?? undefined,
+      MaxDiff.compare(safeA, safeA),
     );
     this.#models.after = DiffPresenter.process(
       this.#dataB ?? undefined,
       this.#dataB ?? undefined,
+      MaxDiff.compare(safeB, safeB),
     );
     this.#metadataDiffs = DiffPresenter.compareMetadata(
       this.#dataA ?? undefined,

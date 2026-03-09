@@ -79,17 +79,45 @@ export class MaxDiff {
       matchedBIds.add(idB);
     };
 
-    let num_anchors: number = 0;
     // Pass 1: Strict ID and Class match
     for (const [id, boxA] of mapA) {
       const boxB = mapB.get(id);
       if (boxB && this.getClass(boxA) === this.getClass(boxB)) {
         anchorPair(id, id, boxA, boxB);
-        num_anchors += 1;
       }
     }
 
-    console.debug(`Found ${num_anchors} anchor pairs.`);
+    console.debug(`Found ${matchedPairs.length} anchor pairs.`);
+
+    // Pass 1.5: Unique Class match
+    const unanchoredClassesA = new Map<string, string[]>();
+    for (const [id, box] of mapA) {
+      if (anchoredIds.has(id)) continue;
+      const cls = this.getClass(box);
+      if (!unanchoredClassesA.has(cls)) unanchoredClassesA.set(cls, []);
+      unanchoredClassesA.get(cls)!.push(id);
+    }
+
+    const unanchoredClassesB = new Map<string, string[]>();
+    for (const [id, box] of mapB) {
+      if (matchedBIds.has(id)) continue;
+      const cls = this.getClass(box);
+      if (!unanchoredClassesB.has(cls)) unanchoredClassesB.set(cls, []);
+      unanchoredClassesB.get(cls)!.push(id);
+    }
+
+    for (const [cls, idsA] of unanchoredClassesA) {
+      const idsB = unanchoredClassesB.get(cls);
+      if (idsA.length === 1 && idsB?.length === 1) {
+        const idA = idsA[0];
+        const idB = idsB[0];
+        anchorPair(idA, idB, mapA.get(idA)!, mapB.get(idB)!);
+      }
+    }
+
+    console.debug(
+      `Increased total number of anchor pairs to ${matchedPairs.length} with "single class" rule.`,
+    );
 
     // Pass 2: Topological connection match
     const getSignature = (boxId: string, lines: PatchLine[]) => {
@@ -105,7 +133,6 @@ export class MaxDiff {
       return sig.sort().join("|");
     };
 
-    let num_topos: number = 0;
     for (const [idA, boxA] of mapA) {
       if (anchoredIds.has(idA)) continue;
       const sigA = getSignature(idA, linesA);
@@ -118,13 +145,14 @@ export class MaxDiff {
           sigA === getSignature(idB, linesB)
         ) {
           anchorPair(idA, idB, boxA, boxB);
-          num_topos += 1;
           break;
         }
       }
     }
 
-    console.debug(`Found ${num_topos} boxes with similar connections.`);
+    console.debug(
+      `Increased total number of anchor pairs to ${matchedPairs.length} with "topological matching".`,
+    );
 
     const diff: DiffCollection<Box> = [];
 
