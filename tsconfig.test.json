@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",       // widens from src/ to cover tests/
+    "types": ["node"],    // pulls in @types/node
+    "lib": ["ESNext"]     // drops DOM — tests don't need it
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}
