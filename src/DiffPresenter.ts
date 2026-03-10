@@ -1,188 +1,143 @@
-import { Box, DiffCollection, MaxPatchJSON, PatchLine } from "./DiffEngine.js";
-import { BoxViewModel, LineViewModel } from "./components.js";
+import { AnnotatedBox, AnnotatedMaxPatch, MaxPatch } from "./DiffEngine.js";
+import { AttrDiff, BoxViewModel, LineViewModel } from "./components.js";
 
-export class DiffPresenter {
-  // NOTE: Hidden attributes
-  static excludedKeys: Set<string> = new Set([
-    "patcher",
-    // "id",
-    "patching_rect",
-    "presentation_rect",
-    "rect",
-  ]);
-  static process(
-    patchA: MaxPatchJSON | undefined,
-    patchB: MaxPatchJSON | undefined,
-    diffs: DiffCollection<Box>,
-  ): { boxes: BoxViewModel[]; lines: LineViewModel[] } {
-    const safeA = patchA?.patcher
-      ? patchA
-      : { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
-    const safeB = patchB?.patcher
-      ? patchB
-      : { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-    const boxesB = safeB.patcher.boxes.map((b: any) => b.box);
+export interface RenderModel {
+  readonly boxes: readonly BoxViewModel[];
+  readonly lines: readonly LineViewModel[];
+}
 
-    const diffBoxes: BoxViewModel[] = [];
-    // NOTE: Use separate maps to avoid key collisions when a heuristic match causes
-    // a B-side box ID to equal a deleted A-side box ID.
-    const diffMapByBId = new Map(
-      diffs
-        .filter((op) => op.type !== "deleted")
-        .map((op) => [op.current.id, op]),
-    );
-    const deletedMapByAId = new Map(
-      diffs
-        .filter(
-          (op): op is Extract<typeof op, { type: "deleted" }> =>
-            op.type === "deleted",
-        )
-        .map((op) => [op.previous.id, op]),
-    );
-    const idMapAtoB = new Map<string, string>();
+export interface MetadataDiff {
+  readonly key: string;
+  readonly old?: unknown;
+  readonly new?: unknown;
+}
 
-    for (const boxB of boxesB) {
-      const op = diffMapByBId.get(boxB.id);
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-      if (!op) {
-        diffBoxes.push({
-          ...boxB,
-          diffState: "unchanged",
-          patcherA: boxB.patcher,
-          patcherB: boxB.patcher,
-        } as BoxViewModel);
-        idMapAtoB.set(boxB.id, boxB.id);
-        continue;
-      }
+/** Box attributes excluded from user-visible diffs (handled separately or noise). */
+const HIDDEN_ATTR_KEYS = new Set([
+  "patcher",
+  "patching_rect",
+  "presentation_rect",
+  "rect",
+]);
 
-      if (op.type === "added") {
-        diffBoxes.push({
-          ...boxB,
-          diffState: "added",
-          patcherA: null,
-          patcherB: boxB.patcher,
-        } as BoxViewModel);
-      } else if (op.type === "modified" || op.type === "moved") {
-        const attrDiffs = Object.entries(op.fields)
-          .filter(([key]) => !this.excludedKeys.has(key))
-          .map(([key, delta]) => ({
-            key,
-            old: delta?.from,
-            new: delta?.to,
-          }));
-        diffBoxes.push({
-          ...boxB,
-          diffState: op.type,
-          attrDiffs,
-          patcherA: op.previous.patcher,
-          patcherB: boxB.patcher,
-          oldText: op.previous.text ?? op.previous.maxclass,
-        } as BoxViewModel);
-        idMapAtoB.set(op.previous.id, boxB.id);
-      }
-    }
+/** Patch-level keys excluded from metadata comparison. */
+const HIDDEN_META_KEYS = new Set(["boxes", "lines", "rect"]);
 
-    for (const op of deletedMapByAId.values()) {
-      diffBoxes.push({
-        ...op.previous,
-        id: `${op.previous.id}_removed`,
-        diffState: "removed",
-        patcherA: op.previous.patcher,
-        patcherB: null,
-      } as BoxViewModel);
-    }
+// ─── Empty Patch Fallback ─────────────────────────────────────────────────────
 
-    const linesA = safeA.patcher.lines?.map((l) => l.patchline) ?? [];
-    const linesB = safeB.patcher.lines?.map((l) => l.patchline) ?? [];
-    const diffLines = this.processLines(linesA, linesB, idMapAtoB); // ← named variable
+const EMPTY_PATCH: MaxPatch = {
+  patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
+};
 
-    const boxIds = new Set(diffBoxes.map((b) => b.id));
-    for (const line of diffLines) {
-      if (!boxIds.has(line.source[0]))
-        console.error(
-          `DiffPresenter: line source "${line.source[0]}" has no corresponding box`,
-        );
-      if (!boxIds.has(line.destination[0]))
-        console.error(
-          `DiffPresenter: line destination "${line.destination[0]}" has no corresponding box`,
-        );
-    }
+function safe(patch: MaxPatch | undefined): MaxPatch {
+  return patch?.patcher ? patch : EMPTY_PATCH;
+}
 
+// ─── Box View Model Helpers ───────────────────────────────────────────────────
+
+function attrDiffsFor(box: AnnotatedBox): readonly AttrDiff[] {
+  if (!box._diff?.fields) return [];
+  return Object.entries(box._diff.fields)
+    .filter(([key]) => !HIDDEN_ATTR_KEYS.has(key))
+    .map(([key, delta]) => ({ key, old: delta.from, new: delta.to }));
+}
+
+function annotatedBoxToViewModel(box: AnnotatedBox): BoxViewModel {
+  const diff = box._diff;
+  if (!diff) {
     return {
-      boxes: structuredClone(diffBoxes),
-      lines: structuredClone(diffLines),
+      ...box,
+      diffState: "unchanged",
+      patcherA: box.patcher,
+      patcherB: box.patcher,
     };
   }
-
-  private static processLines(
-    linesA: PatchLine[],
-    linesB: PatchLine[],
-    idMapAtoB: Map<string, string>,
-  ): LineViewModel[] {
-    const diffLines: LineViewModel[] = [];
-    const getLineKey = (src: [string, number], dst: [string, number]) =>
-      `${src.join(",")}-${dst.join(",")}`;
-    const linesMapB = new Map(
-      linesB.map((l) => [getLineKey(l.source, l.destination), l]),
-    );
-    const processedLinesB = new Set<string>();
-
-    for (const lA of linesA) {
-      const mappedSrcId = idMapAtoB.get(lA.source[0]);
-      const mappedDstId = idMapAtoB.get(lA.destination[0]);
-
-      if (mappedSrcId && mappedDstId) {
-        const keyInB = getLineKey(
-          [mappedSrcId, lA.source[1]],
-          [mappedDstId, lA.destination[1]],
-        );
-        const lB = linesMapB.get(keyInB);
-
-        if (lB) {
-          diffLines.push({ ...lB, diffState: "unchanged" });
-          processedLinesB.add(keyInB);
-          continue;
-        }
-      }
-
-      diffLines.push({
-        ...lA,
-        source: [mappedSrcId ?? `${lA.source[0]}_removed`, lA.source[1]],
-        destination: [
-          mappedDstId ?? `${lA.destination[0]}_removed`,
-          lA.destination[1],
-        ],
+  switch (diff.type) {
+    case "added":
+      return {
+        ...box,
+        diffState: "added",
+        patcherA: null,
+        patcherB: box.patcher,
+      };
+    case "deleted":
+      return {
+        ...box,
         diffState: "removed",
-      });
-    }
+        patcherA: diff.previous?.patcher,
+        patcherB: null,
+      };
+    case "moved":
+    case "modified":
+      return {
+        ...box,
+        diffState: diff.type,
+        attrDiffs: attrDiffsFor(box),
+        patcherA: diff.previous?.patcher,
+        patcherB: box.patcher,
+        ...(diff.previous && {
+          oldText: diff.previous.text ?? diff.previous.maxclass,
+        }),
+      };
+  }
+}
 
-    for (const [key, lB] of linesMapB) {
-      if (!processedLinesB.has(key))
-        diffLines.push({ ...lB, diffState: "added" });
-    }
+// ─── Public API ───────────────────────────────────────────────────────────────
 
-    return diffLines;
+export class DiffPresenter {
+  /** Render a plain (non-diff) patch with no change annotations. Used for before/after views. */
+  static render(patch: MaxPatch | undefined): RenderModel {
+    const p = safe(patch);
+    const boxes: BoxViewModel[] = p.patcher.boxes.map((b) => ({ ...b.box }));
+    const lines: LineViewModel[] = (p.patcher.lines ?? []).map((l) => ({
+      source: l.patchline.source,
+      destination: l.patchline.destination,
+    }));
+    return { boxes: structuredClone(boxes), lines: structuredClone(lines) };
   }
 
-  static getMetadata(data?: MaxPatchJSON): Record<string, unknown> {
-    if (!data?.patcher) return {};
-    // NOTE: Hidden attributes
-    const { boxes, lines, rect, ...metadata } = data.patcher;
-    return metadata;
+  /** Render an annotated diff patch. */
+  static renderDiff(annotated: AnnotatedMaxPatch): RenderModel {
+    const boxes: BoxViewModel[] = annotated.patcher.boxes.map((b) =>
+      annotatedBoxToViewModel(b.box),
+    );
+    const lines: LineViewModel[] = annotated.patcher.lines.map((l) => ({
+      source: l.patchline.source,
+      destination: l.patchline.destination,
+      diffState: l.patchline._diff
+        ? l.patchline._diff.type === "removed"
+          ? "removed"
+          : "added"
+        : "unchanged",
+    }));
+    return { boxes: structuredClone(boxes), lines: structuredClone(lines) };
   }
 
-  static compareMetadata(dataA?: MaxPatchJSON, dataB?: MaxPatchJSON) {
-    const metaA = this.getMetadata(dataA);
-    const metaB = this.getMetadata(dataB);
-    const diffs: { key: string; old?: unknown; new?: unknown }[] = [];
-    const allKeys = new Set([...Object.keys(metaA), ...Object.keys(metaB)]);
+  /** Extract patch-level metadata (everything except boxes, lines, rect). */
+  static metadata(
+    patch: MaxPatch | undefined,
+  ): Readonly<Record<string, unknown>> {
+    if (!patch?.patcher) return {};
+    return Object.fromEntries(
+      Object.entries(patch.patcher).filter(([k]) => !HIDDEN_META_KEYS.has(k)),
+    );
+  }
 
-    for (const key of allKeys) {
-      if (JSON.stringify(metaA[key]) !== JSON.stringify(metaB[key])) {
-        diffs.push({ key, old: metaA[key], new: metaB[key] });
-      }
-    }
-    return diffs;
+  /** Compare patch-level metadata between two patches. */
+  static compareMetadata(
+    patchA: MaxPatch | undefined,
+    patchB: MaxPatch | undefined,
+  ): readonly MetadataDiff[] {
+    const metaA = this.metadata(patchA);
+    const metaB = this.metadata(patchB);
+    const keys = new Set([...Object.keys(metaA), ...Object.keys(metaB)]);
+
+    return [...keys]
+      .filter((k) => JSON.stringify(metaA[k]) !== JSON.stringify(metaB[k]))
+      .map((k) => ({ key: k, old: metaA[k], new: metaB[k] }));
   }
 }

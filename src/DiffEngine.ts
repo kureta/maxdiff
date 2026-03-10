@@ -1,193 +1,315 @@
+// ─── Domain Types ────────────────────────────────────────────────────────────
+
 export type Rect = [number, number, number, number];
 
 export interface Box {
-  id: string;
-  maxclass: string;
-  numinlets: number;
-  numoutlets: number;
-  patching_rect: Rect;
-  text?: string;
-  patcher?: Patcher;
-  presentation?: number;
-  presentation_rect?: Rect;
-  [key: string]: unknown;
+  readonly id: string;
+  readonly maxclass: string;
+  readonly numinlets: number;
+  readonly numoutlets: number;
+  readonly patching_rect: Rect;
+  readonly text?: string;
+  readonly patcher?: Patcher;
+  readonly presentation?: number;
+  readonly presentation_rect?: Rect;
+  readonly [key: string]: unknown;
 }
 
 export interface PatchLine {
-  source: [string, number];
-  destination: [string, number];
+  readonly source: [string, number];
+  readonly destination: [string, number];
 }
 
 export interface Patcher {
-  boxes: { box: Box }[];
-  lines: { patchline: PatchLine }[];
-  rect: Rect;
-  [key: string]: unknown;
+  readonly boxes: ReadonlyArray<{ readonly box: Box }>;
+  readonly lines: ReadonlyArray<{ readonly patchline: PatchLine }>;
+  readonly rect: Rect;
+  readonly [key: string]: unknown;
 }
 
-export interface MaxPatchJSON {
-  patcher: Patcher;
+export interface MaxPatch {
+  readonly patcher: Patcher;
 }
 
-export interface FieldDelta {
-  from: unknown;
-  to: unknown;
+// ─── Pure Helper ─────────────────────────────────────────────────────────────
+
+/** Returns the semantic class of a box — the maxclass, or the first token of text for generic objects. */
+export function boxClass(box: Box): string {
+  return box.maxclass !== "newobj"
+    ? box.maxclass
+    : ((box.text ?? "").split(" ")[0] ?? "");
 }
 
-export type DiffOperation<T extends object> =
-  | { type: "added"; current: T }
-  | { type: "deleted"; previous: T }
-  | {
-      type: "modified" | "moved";
-      previous: T;
-      current: T;
-      fields: Partial<Record<keyof T, FieldDelta>>;
-    };
+// ─── Matching Passes ──────────────────────────────────────────────────────────
 
-export type DiffCollection<T extends object> = DiffOperation<T>[];
+type Pair = [Box, Box];
+
+/** Pass 1: Match by identical ID and identical class. */
+function matchById(
+  mapA: ReadonlyMap<string, Box>,
+  mapB: ReadonlyMap<string, Box>,
+): { pairs: Pair[]; anchoredA: Set<string>; anchoredB: Set<string> } {
+  const pairs: Pair[] = [];
+  const anchoredA = new Set<string>();
+  const anchoredB = new Set<string>();
+
+  for (const [id, boxA] of mapA) {
+    const boxB = mapB.get(id);
+    if (boxB && boxClass(boxA) === boxClass(boxB)) {
+      pairs.push([boxA, boxB]);
+      anchoredA.add(id);
+      anchoredB.add(id);
+    }
+  }
+  return { pairs, anchoredA, anchoredB };
+}
+
+/** Pass 1.5: Among unmatched boxes, match where a class appears exactly once on each side. */
+function matchByUniqueClass(
+  mapA: ReadonlyMap<string, Box>,
+  mapB: ReadonlyMap<string, Box>,
+  anchoredA: Set<string>,
+  anchoredB: Set<string>,
+  pairs: Pair[],
+): void {
+  const uniqA = uniqueClassMap(mapA, anchoredA);
+  const uniqB = uniqueClassMap(mapB, anchoredB);
+
+  for (const [cls, boxA] of uniqA) {
+    const boxB = uniqB.get(cls);
+    if (!boxB) continue;
+    pairs.push([boxA, boxB]);
+    anchoredA.add(boxA.id);
+    anchoredB.add(boxB.id);
+  }
+}
+
+function uniqueClassMap(
+  map: ReadonlyMap<string, Box>,
+  exclude: ReadonlySet<string>,
+): Map<string, Box> {
+  const seen = new Map<string, Box | null>();
+  for (const [id, box] of map) {
+    if (exclude.has(id)) continue;
+    const cls = boxClass(box);
+    seen.set(cls, seen.has(cls) ? null : box);
+  }
+  const unique = new Map<string, Box>();
+  for (const [cls, box] of seen) {
+    if (box !== null) unique.set(cls, box);
+  }
+  return unique;
+}
+
+/** Pass 2: Match unanchored boxes by their topological signature relative to already-anchored neighbours. */
+function matchByTopology(
+  mapA: ReadonlyMap<string, Box>,
+  mapB: ReadonlyMap<string, Box>,
+  linesA: readonly PatchLine[],
+  linesB: readonly PatchLine[],
+  anchoredA: Set<string>,
+  anchoredB: Set<string>,
+  pairs: Pair[],
+): void {
+  const sigA = buildSignatureMap(mapA, linesA, anchoredA);
+  const sigB = buildSignatureMap(mapB, linesB, anchoredB);
+
+  for (const [idA, [sig, boxA]] of sigA) {
+    if (!sig) continue;
+    for (const [idB, [sigBVal, boxB]] of sigB) {
+      if (boxClass(boxA) !== boxClass(boxB) || sig !== sigBVal) continue;
+      pairs.push([boxA, boxB]);
+      anchoredA.add(idA);
+      anchoredB.add(idB);
+      sigB.delete(idB);
+      break;
+    }
+  }
+}
+
+function buildSignatureMap(
+  map: ReadonlyMap<string, Box>,
+  lines: readonly PatchLine[],
+  anchored: ReadonlySet<string>,
+): Map<string, [string, Box]> {
+  const result = new Map<string, [string, Box]>();
+  for (const [id, box] of map) {
+    if (anchored.has(id)) continue;
+    const tokens: string[] = [];
+    for (const { source, destination } of lines) {
+      if (destination[0] === id && anchored.has(source[0]))
+        tokens.push(`in:${destination[1]}<-${source[0]}:${source[1]}`);
+      if (source[0] === id && anchored.has(destination[0]))
+        tokens.push(`out:${source[1]}->${destination[0]}:${destination[1]}`);
+    }
+    result.set(id, [tokens.sort().join("|"), box]);
+  }
+  return result;
+}
+
+// ─── Field Diffing ───────────────────────────────────────────────────────────
+
+export interface FieldDelta<T = unknown> {
+  readonly from: T;
+  readonly to: T;
+}
+
+const POSITION_KEYS = new Set(["patching_rect", "presentation_rect", "rect"]);
+
+function diffFields(
+  boxA: Box,
+  boxB: Box,
+): Readonly<Record<string, FieldDelta>> {
+  const fields: Record<string, FieldDelta> = {};
+  const keys = new Set([...Object.keys(boxA), ...Object.keys(boxB)]);
+  keys.delete("id");
+
+  for (const key of keys) {
+    if (JSON.stringify(boxA[key]) !== JSON.stringify(boxB[key]))
+      fields[key] = { from: boxA[key], to: boxB[key] };
+  }
+  return fields;
+}
+
+// ─── Annotated Patch Types ────────────────────────────────────────────────────
+
+export interface BoxDiff {
+  readonly type: "added" | "deleted" | "moved" | "modified";
+  readonly previous?: Box;
+  readonly fields?: Readonly<Record<string, FieldDelta>>;
+}
+
+export interface AnnotatedBox extends Box {
+  readonly _diff?: BoxDiff;
+}
+
+export interface AnnotatedPatchLine extends PatchLine {
+  readonly _diff?: { readonly type: "added" | "removed" };
+}
+
+export interface AnnotatedPatcher {
+  readonly boxes: ReadonlyArray<{ readonly box: AnnotatedBox }>;
+  readonly lines: ReadonlyArray<{ readonly patchline: AnnotatedPatchLine }>;
+  readonly rect: Rect;
+  readonly [key: string]: unknown;
+}
+
+export interface AnnotatedMaxPatch {
+  readonly patcher: AnnotatedPatcher;
+}
+
+// ─── Line Key Helper ─────────────────────────────────────────────────────────
+
+function lineKey(src: [string, number], dst: [string, number]): string {
+  return `${src[0]},${src[1]}-${dst[0]},${dst[1]}`;
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export class MaxDiff {
-  public static getClass(box: Box): string {
-    if (box.maxclass && box.maxclass !== "newobj") return box.maxclass;
-    return (box.text || "").split(" ")[0];
-  }
-
-  public static compare(
-    patchA: MaxPatchJSON,
-    patchB: MaxPatchJSON,
-  ): DiffCollection<Box> {
+  /** Produce an annotated version of patchB containing all diff information inline. */
+  static annotate(patchA: MaxPatch, patchB: MaxPatch): AnnotatedMaxPatch {
     const boxesA = patchA.patcher.boxes.map((b) => b.box);
     const boxesB = patchB.patcher.boxes.map((b) => b.box);
     const linesA = patchA.patcher.lines?.map((l) => l.patchline) ?? [];
     const linesB = patchB.patcher.lines?.map((l) => l.patchline) ?? [];
 
-    console.debug("===== Comparing =====");
-    console.debug(
-      `Before state: ${boxesA.length} boxes\nAfter state: ${boxesB.length} boxes`,
-    );
+    const mapA = new Map(boxesA.map((b) => [b.id, b]));
+    const mapB = new Map(boxesB.map((b) => [b.id, b]));
 
-    const mapA = new Map<string, Box>(boxesA.map((b) => [b.id, b]));
-    const mapB = new Map<string, Box>(boxesB.map((b) => [b.id, b]));
+    const { pairs, anchoredA, anchoredB } = matchById(mapA, mapB);
+    matchByUniqueClass(mapA, mapB, anchoredA, anchoredB, pairs);
+    matchByTopology(mapA, mapB, linesA, linesB, anchoredA, anchoredB, pairs);
 
-    const matchedPairs: [Box, Box][] = [];
-    const anchoredIds = new Set<string>();
-    const matchedBIds = new Set<string>();
+    // Build A-id → B-id map for all matched pairs.
+    const idMapAtoB = new Map<string, string>();
+    // Build B-id → A-side box map for annotating B-side boxes.
+    const pairByBId = new Map<string, Box>();
+    for (const [boxA, boxB] of pairs) {
+      idMapAtoB.set(boxA.id, boxB.id);
+      pairByBId.set(boxB.id, boxA);
+    }
 
-    const anchorPair = (idA: string, idB: string, boxA: Box, boxB: Box) => {
-      matchedPairs.push([boxA, boxB]);
-      anchoredIds.add(idA);
-      matchedBIds.add(idB);
-    };
-
-    // Pass 1: Strict ID and Class match
+    // Build annotated boxes: B-side first, then deleted A-side boxes.
+    const annotatedBoxes: { box: AnnotatedBox }[] = [];
+    for (const boxB of boxesB) {
+      const boxA = pairByBId.get(boxB.id);
+      if (!boxA) {
+        annotatedBoxes.push({ box: { ...boxB, _diff: { type: "added" } } });
+      } else {
+        const fields = diffFields(boxA, boxB);
+        if (Object.keys(fields).length === 0) {
+          annotatedBoxes.push({ box: boxB });
+        } else {
+          const isPositionOnly = Object.keys(fields).every((k) =>
+            POSITION_KEYS.has(k),
+          );
+          annotatedBoxes.push({
+            box: {
+              ...boxB,
+              _diff: {
+                type: isPositionOnly ? "moved" : "modified",
+                previous: boxA,
+                fields,
+              },
+            },
+          });
+        }
+      }
+    }
     for (const [id, boxA] of mapA) {
-      const boxB = mapB.get(id);
-      if (boxB && this.getClass(boxA) === this.getClass(boxB)) {
-        anchorPair(id, id, boxA, boxB);
-      }
-    }
-
-    console.debug(`Found ${matchedPairs.length} anchor pairs.`);
-
-    // Pass 1.5: Unique Class match
-    const unanchoredClassesA = new Map<string, string[]>();
-    for (const [id, box] of mapA) {
-      if (anchoredIds.has(id)) continue;
-      const cls = this.getClass(box);
-      if (!unanchoredClassesA.has(cls)) unanchoredClassesA.set(cls, []);
-      unanchoredClassesA.get(cls)!.push(id);
-    }
-
-    const unanchoredClassesB = new Map<string, string[]>();
-    for (const [id, box] of mapB) {
-      if (matchedBIds.has(id)) continue;
-      const cls = this.getClass(box);
-      if (!unanchoredClassesB.has(cls)) unanchoredClassesB.set(cls, []);
-      unanchoredClassesB.get(cls)!.push(id);
-    }
-
-    for (const [cls, idsA] of unanchoredClassesA) {
-      const idsB = unanchoredClassesB.get(cls);
-      if (idsA.length === 1 && idsB?.length === 1) {
-        const idA = idsA[0];
-        const idB = idsB[0];
-        anchorPair(idA, idB, mapA.get(idA)!, mapB.get(idB)!);
-      }
-    }
-
-    console.debug(
-      `Increased total number of anchor pairs to ${matchedPairs.length} with "single class" rule.`,
-    );
-
-    // Pass 2: Topological connection match
-    const getSignature = (boxId: string, lines: PatchLine[]) => {
-      const sig: string[] = [];
-      for (const { source, destination } of lines) {
-        if (destination[0] === boxId && anchoredIds.has(source[0])) {
-          sig.push(`in:${destination[1]}<-${source[0]}:${source[1]}`);
-        }
-        if (source[0] === boxId && anchoredIds.has(destination[0])) {
-          sig.push(`out:${source[1]}->${destination[0]}:${destination[1]}`);
-        }
-      }
-      return sig.sort().join("|");
-    };
-
-    for (const [idA, boxA] of mapA) {
-      if (anchoredIds.has(idA)) continue;
-      const sigA = getSignature(idA, linesA);
-      if (!sigA) continue;
-
-      for (const [idB, boxB] of mapB) {
-        if (matchedBIds.has(idB)) continue;
-        if (
-          this.getClass(boxA) === this.getClass(boxB) &&
-          sigA === getSignature(idB, linesB)
-        ) {
-          anchorPair(idA, idB, boxA, boxB);
-          break;
-        }
-      }
-    }
-
-    console.debug(
-      `Increased total number of anchor pairs to ${matchedPairs.length} with "topological matching".`,
-    );
-
-    const diff: DiffCollection<Box> = [];
-
-    // Compute modifications
-    for (const [boxA, boxB] of matchedPairs) {
-      const fields: Partial<Record<keyof Box, FieldDelta>> = {};
-      const allKeys = new Set([...Object.keys(boxA), ...Object.keys(boxB)]);
-      allKeys.delete("id");
-
-      for (const key of allKeys) {
-        if (JSON.stringify(boxA[key]) !== JSON.stringify(boxB[key])) {
-          fields[key] = { from: boxA[key], to: boxB[key] };
-        }
-      }
-
-      const changedKeys = Object.keys(fields);
-      if (changedKeys.length > 0) {
-        const isMoved = changedKeys.every((k) =>
-          ["patching_rect", "presentation_rect", "rect"].includes(k),
-        );
-        diff.push({
-          type: isMoved ? "moved" : "modified",
-          previous: boxA,
-          current: boxB,
-          fields,
+      if (!anchoredA.has(id)) {
+        annotatedBoxes.push({
+          box: {
+            ...boxA,
+            id: `${boxA.id}_removed`,
+            _diff: { type: "deleted", previous: boxA },
+          },
         });
       }
     }
 
-    // Unmatched deletions and additions
-    for (const [id, boxA] of mapA)
-      if (!anchoredIds.has(id)) diff.push({ type: "deleted", previous: boxA });
-    for (const [id, boxB] of mapB)
-      if (!matchedBIds.has(id)) diff.push({ type: "added", current: boxB });
+    // Annotate lines.
+    const linesMapB = new Map(
+      linesB.map((l) => [lineKey(l.source, l.destination), l]),
+    );
+    const processedB = new Set<string>();
+    const annotatedLines: { patchline: AnnotatedPatchLine }[] = [];
 
-    return diff;
+    for (const lA of linesA) {
+      const mappedSrc =
+        idMapAtoB.get(lA.source[0]) ?? `${lA.source[0]}_removed`;
+      const mappedDst =
+        idMapAtoB.get(lA.destination[0]) ?? `${lA.destination[0]}_removed`;
+      const key = lineKey(
+        [mappedSrc, lA.source[1]],
+        [mappedDst, lA.destination[1]],
+      );
+      const lB = linesMapB.get(key);
+      if (lB) {
+        processedB.add(key);
+        annotatedLines.push({ patchline: lB });
+      } else {
+        annotatedLines.push({
+          patchline: {
+            source: [mappedSrc, lA.source[1]],
+            destination: [mappedDst, lA.destination[1]],
+            _diff: { type: "removed" },
+          },
+        });
+      }
+    }
+    for (const [key, lB] of linesMapB) {
+      if (!processedB.has(key))
+        annotatedLines.push({ patchline: { ...lB, _diff: { type: "added" } } });
+    }
+
+    return {
+      patcher: {
+        ...patchB.patcher,
+        boxes: annotatedBoxes,
+        lines: annotatedLines,
+      },
+    };
   }
 }

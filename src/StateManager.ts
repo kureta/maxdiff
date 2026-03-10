@@ -1,25 +1,39 @@
-// StateManager.ts
-import { DiffPresenter } from "./DiffPresenter.js";
-import {
-  MaxPatchJSON,
-  MaxDiff,
-  DiffOperation,
-  Box,
-  Patcher,
-} from "./DiffEngine.js";
-import { BoxViewModel, LineViewModel } from "./components.js";
+import { DiffPresenter, RenderModel, MetadataDiff } from "./DiffPresenter.js";
+import { MaxDiff, MaxPatch, AnnotatedMaxPatch, Patcher } from "./DiffEngine.js";
 
-interface RenderModel {
-  boxes: BoxViewModel[];
-  lines: LineViewModel[];
+// ─── Types ────────────────────────────────────────────────────────────────────
+export type ViewMode = "diff" | "before" | "after";
+export type StateChangeType =
+  | "data"
+  | "navigation"
+  | "view"
+  | "zoom"
+  | "layout-reset";
+export interface StateChangeEvent {
+  readonly type: StateChangeType;
+  readonly pivot?: { x: number; y: number };
 }
 
-export type ViewMode = "diff" | "before" | "after";
+interface NavEntry {
+  readonly patchA: MaxPatch | null;
+  readonly patchB: MaxPatch | null;
+}
 
+// ─── Empty Patch Fallback ─────────────────────────────────────────────────────
+const EMPTY: MaxPatch = {
+  patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
+};
+function safe(patch: MaxPatch | null): MaxPatch {
+  return patch ?? EMPTY;
+}
+
+// ─── StateManager ─────────────────────────────────────────────────────────────
 export class StateManager extends EventTarget {
-  #dataA: MaxPatchJSON | null = null;
-  #dataB: MaxPatchJSON | null = null;
-  #rawDiffs: DiffOperation<Box>[] = [];
+  #patchA: MaxPatch | null = null;
+  #patchB: MaxPatch | null = null;
+  #annotated: AnnotatedMaxPatch = {
+    patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
+  };
 
   #models: Record<ViewMode, RenderModel> = {
     diff: { boxes: [], lines: [] },
@@ -27,50 +41,55 @@ export class StateManager extends EventTarget {
     after: { boxes: [], lines: [] },
   };
 
-  #metadataDiffs: ReturnType<typeof DiffPresenter.compareMetadata> = [];
-  #navStack: { dataA: MaxPatchJSON | null; dataB: MaxPatchJSON | null }[] = [];
+  #metadataDiffs: readonly MetadataDiff[] = [];
+  #navStack: NavEntry[] = [];
 
-  public zoomLevel = 1.0;
-  public viewMode: ViewMode = "diff";
-  public isPresentation = false;
-  public showRemovedPresentation = false;
+  zoomLevel = 1.0;
+  viewMode: ViewMode = "diff";
+  isPresentation = false;
+  showRemovedPresentation = false;
 
-  get currentRenderData(): RenderModel {
+  // ── Accessors ───────────────────────────────────────────────────────────────
+  get renderModel(): RenderModel {
     return this.#models[this.viewMode];
   }
 
-  get currentMetadata() {
+  get metadata(): {
+    diffs: readonly MetadataDiff[];
+    values: Readonly<Record<string, unknown>>;
+  } {
     if (this.viewMode === "diff")
-      return { diffs: this.#metadataDiffs, meta: {} };
-    const data = this.viewMode === "before" ? this.#dataA : this.#dataB;
-    return { diffs: [], meta: DiffPresenter.getMetadata(data ?? undefined) };
+      return { diffs: this.#metadataDiffs, values: {} };
+    const patch = this.viewMode === "before" ? this.#patchA : this.#patchB;
+    return { diffs: [], values: DiffPresenter.metadata(patch ?? undefined) };
   }
 
-  get hasParent() {
+  get hasParent(): boolean {
     return this.#navStack.length > 0;
   }
 
-  setFileA(data: MaxPatchJSON): void {
-    this.#dataA = data;
+  // ── Data Setters ────────────────────────────────────────────────────────────
+  setFileA(data: MaxPatch): void {
+    this.#patchA = data;
+    this.#recalculate();
+  }
+  setFileB(data: MaxPatch): void {
+    this.#patchB = data;
     this.#recalculate();
   }
 
-  setFileB(data: MaxPatchJSON): void {
-    this.#dataB = data;
+  setInitialData(patchA: MaxPatch, patchB: MaxPatch): void {
+    this.#patchA = patchA;
+    this.#patchB = patchB;
     this.#recalculate();
   }
 
-  setInitialData(dataA: MaxPatchJSON, dataB: MaxPatchJSON): void {
-    this.#dataA = dataA;
-    this.#dataB = dataB;
-    this.#recalculate();
-  }
-
+  // ── View Controls ───────────────────────────────────────────────────────────
   setZoom(level: number, pivot?: { x: number; y: number }): void {
-    const newLevel = Math.max(0.2, Math.min(level, 3.0));
-    if (newLevel === this.zoomLevel) return;
-    this.zoomLevel = newLevel;
-    this.#notify("zoom", { pivot });
+    const clamped = Math.max(0.2, Math.min(level, 3.0));
+    if (clamped === this.zoomLevel) return;
+    this.zoomLevel = clamped;
+    this.#notify("zoom", pivot ? { pivot } : {});
   }
 
   setViewMode(mode: ViewMode): void {
@@ -93,104 +112,77 @@ export class StateManager extends EventTarget {
 
   resetLayout(): void {
     this.zoomLevel = 1.0;
-    this.#recalculate();
-    this.#notify("layout-reset");
+    this.#recalculate("layout-reset");
   }
 
+  // ── Navigation ──────────────────────────────────────────────────────────────
   enterSubpatch(boxId: string): void {
     const actualId = boxId.replace("_removed", "");
-    let pA = null;
-    let pB = null;
-
-    for (const op of this.#rawDiffs) {
-      if (op.type === "deleted" && op.previous.id === actualId) {
-        pA = op.previous.patcher;
-        break;
-      }
-      if (op.type === "added" && op.current.id === actualId) {
-        pB = op.current.patcher;
-        break;
-      }
-      if (
-        (op.type === "modified" || op.type === "moved") &&
-        (op.previous.id === actualId || op.current.id === actualId)
-      ) {
-        pA = op.previous.patcher;
-        pB = op.current.patcher;
-        break;
-      }
-    }
-
-    if (!pA && !pB) {
-      const boxA = this.#dataA?.patcher?.boxes?.find(
-        (b) => b.box.id === actualId,
-      )?.box;
-      const boxB = this.#dataB?.patcher?.boxes?.find(
-        (b) => b.box.id === actualId,
-      )?.box;
-      pA = boxA?.patcher;
-      pB = boxB?.patcher;
-    }
-
-    if (pA || pB) {
-      this.pushSubpatch(pA as any, pB as any);
-    }
-  }
-
-  pushSubpatch(pA?: Patcher, pB?: Patcher): void {
-    this.#navStack.push({ dataA: this.#dataA, dataB: this.#dataB });
-    this.#dataA = pA ? ({ patcher: pA } as MaxPatchJSON) : null;
-    this.#dataB = pB ? ({ patcher: pB } as MaxPatchJSON) : null;
-    this.#recalculate("navigation");
+    const [pA, pB] = this.#resolveSubpatch(actualId);
+    if (pA || pB) this.#pushSubpatch(pA, pB);
   }
 
   popSubpatch(): void {
     const prev = this.#navStack.pop();
     if (!prev) return;
-    this.#dataA = prev.dataA;
-    this.#dataB = prev.dataB;
-    this.#recalculate("data");
+    this.#patchA = prev.patchA;
+    this.#patchB = prev.patchB;
+    this.#recalculate();
   }
 
-  #recalculate(eventType: string = "data"): void {
-    const safeA =
-      this.#dataA ??
-      ({
-        patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
-      } as unknown as MaxPatchJSON);
-    const safeB =
-      this.#dataB ??
-      ({
-        patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
-      } as unknown as MaxPatchJSON);
+  // ── Private ─────────────────────────────────────────────────────────────────
+  #resolveSubpatch(id: string): [Patcher | undefined, Patcher | undefined] {
+    for (const { box } of this.#annotated.patcher.boxes) {
+      const diff = box._diff;
+      if (!diff) {
+        if (box.id === id) return [box.patcher, box.patcher];
+      } else if (diff.type === "deleted") {
+        if (diff.previous?.id === id) return [diff.previous.patcher, undefined];
+      } else if (diff.type === "added") {
+        if (box.id === id) return [undefined, box.patcher];
+      } else {
+        // modified or moved
+        if (box.id === id || diff.previous?.id === id)
+          return [diff.previous?.patcher, box.patcher];
+      }
+    }
+    // Fallback: look in raw patches
+    const boxA = this.#patchA?.patcher.boxes.find((b) => b.box.id === id)?.box;
+    const boxB = this.#patchB?.patcher.boxes.find((b) => b.box.id === id)?.box;
+    return [boxA?.patcher, boxB?.patcher];
+  }
 
-    this.#rawDiffs = MaxDiff.compare(safeA, safeB);
+  #pushSubpatch(pA: Patcher | undefined, pB: Patcher | undefined): void {
+    this.#navStack.push({ patchA: this.#patchA, patchB: this.#patchB });
+    this.#patchA = pA ? { patcher: pA } : null;
+    this.#patchB = pB ? { patcher: pB } : null;
+    this.#recalculate("navigation");
+  }
 
-    this.#models.diff = DiffPresenter.process(
-      this.#dataA ?? undefined,
-      this.#dataB ?? undefined,
-      this.#rawDiffs,
-    );
-    this.#models.before = DiffPresenter.process(
-      this.#dataA ?? undefined,
-      this.#dataA ?? undefined,
-      MaxDiff.compare(safeA, safeA),
-    );
-    this.#models.after = DiffPresenter.process(
-      this.#dataB ?? undefined,
-      this.#dataB ?? undefined,
-      MaxDiff.compare(safeB, safeB),
-    );
+  #recalculate(eventType: StateChangeType = "data"): void {
+    const a = safe(this.#patchA);
+    const b = safe(this.#patchB);
+
+    this.#annotated = MaxDiff.annotate(a, b);
+
+    this.#models = {
+      diff: DiffPresenter.renderDiff(this.#annotated),
+      before: DiffPresenter.render(this.#patchA ?? undefined),
+      after: DiffPresenter.render(this.#patchB ?? undefined),
+    };
+
     this.#metadataDiffs = DiffPresenter.compareMetadata(
-      this.#dataA ?? undefined,
-      this.#dataB ?? undefined,
+      this.#patchA ?? undefined,
+      this.#patchB ?? undefined,
     );
     this.#notify(eventType);
   }
 
-  #notify(type: string, extras: Record<string, unknown> = {}): void {
+  #notify(type: StateChangeType, extras: Partial<StateChangeEvent> = {}): void {
     this.dispatchEvent(
-      new CustomEvent("state-change", { detail: { type, ...extras } }),
+      new CustomEvent<StateChangeEvent>("state-change", {
+        detail: { type, ...extras },
+      }),
     );
   }
 }

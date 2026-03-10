@@ -1,56 +1,91 @@
-import argparse
+#!/usr/bin/env python3
+"""Max/MSP Patch Diff Tool — HTTP server that serves the visual diff UI."""
+
+from __future__ import annotations
+
 import http.server
 import json
+import os
 import socketserver
 import threading
 import webbrowser
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, override
+from typing import TYPE_CHECKING, Final, final, override
+
+# `argparse` types its namespace attributes as `Any`; access them via a typed
+# wrapper instead so none of that `Any` leaks into our own code.
+import argparse
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+
+# ─── Data ─────────────────────────────────────────────────────────────────────
+
+# A Max patch is arbitrary nested JSON.  We represent the loaded value as
+# `object` (the top of Python's type hierarchy for JSON-compatible values)
+# rather than `Any`, which tells Pyright we know nothing about the structure
+# but deliberately accept any concrete type.
+type PatchData = object | None
+
+
+@dataclass(frozen=True, slots=True)
+class DiffRequest:
+    old_file: Path
+    new_file: Path
+    file_path: str
+
+
+# ─── JSON Loading ─────────────────────────────────────────────────────────────
+
+_NULL_PATHS: Final = frozenset({"/dev/null", "NUL"})
+
+
+def load_patch(path: Path) -> PatchData:
+    """Load a Max patch as JSON.  Handles .amxd (binary) and plain JSON formats.
+    Returns None when the path is absent or a git null sentinel."""
+    if not path.exists() or path.name in _NULL_PATHS:
+        return None
+
+    raw = path.read_bytes()
+
+    if path.suffix.lower() == ".amxd":
+        return _parse_amxd(raw)
+
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def _parse_amxd(data: bytes) -> PatchData:
+    """Extract the embedded JSON object from an AMXD binary file."""
+    tag_pos = data.find(b"ptch")
+    start = data.find(b"{", max(0, tag_pos))
+    end = data.rfind(b"}")
+    if -1 < start < end:
+        try:
+            return json.loads(data[start : end + 1].decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+    return None
+
+
+# ─── HTTP Handler ─────────────────────────────────────────────────────────────
 
 
 class DiffHandler(http.server.SimpleHTTPRequestHandler):
-    """Handles requests for the diff tool UI and data."""
+    """Serves the static UI and the /diff-data JSON endpoint."""
 
     @override
-    def log_message(self, format: str, *args: Any) -> None:
-        """Suppress logging to keep console clean."""
-
-    def load_patch_json(self, path: Path | str) -> Any | None:
-        """Safely load JSON from a file, handling git's /dev/null and AMXD binary
-        formats."""
-        path = Path(path)
-        if not path.exists() or path.name in ("/dev/null", "NUL"):
-            return None
-
-        try:
-            # AMXD files are binary with embedded JSON.
-            if path.suffix.lower() == ".amxd":
-                content = path.read_bytes()
-                # Find the 'ptch' tag or just the first JSON object
-                start_idx = content.find(b"ptch")
-                start = content.find(b"{", max(0, start_idx))
-                end = content.rfind(b"}")
-                if -1 < start < end:
-                    return json.loads(content[start : end + 1].decode("utf-8"))
-
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            return None
+    def log_message(self, format: str, *args: str | int) -> None:  # noqa: A002
+        pass  # suppress request logging
 
     @override
     def do_GET(self) -> None:
         if self.path == "/diff-data":
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-
-            server: DiffServer = self.server  # type: ignore
-            data = {
-                "old": self.load_patch_json(server.old_file),
-                "new": self.load_patch_json(server.new_file),
-                "filename": server.file_path,
-            }
-            _ = self.wfile.write(json.dumps(data).encode("utf-8"))
+            self._serve_diff_data()
         else:
             super().do_GET()
 
@@ -58,62 +93,113 @@ class DiffHandler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/shutdown":
             self.send_response(200)
             self.end_headers()
-            threading.Thread(target=self.server.shutdown).start()
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
         else:
             self.send_error(404)
 
+    def _serve_diff_data(self) -> None:
+        # `self.server` is typed as `BaseServer` by the stdlib stubs; we know
+        # it is always a `DiffServer` at runtime, so we down-cast once here.
+        assert isinstance(self.server, DiffServer)
+        req = self.server.diff_request
+        payload = json.dumps(
+            {
+                "old": load_patch(req.old_file),
+                "new": load_patch(req.new_file),
+                "filename": req.file_path,
+            }
+        ).encode()
 
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        _ = self.wfile.write(payload)
+
+
+# ─── Server ───────────────────────────────────────────────────────────────────
+
+
+@final
 class DiffServer(socketserver.TCPServer):
-    """A simple TCP server that stores diff-related file paths."""
+    """TCPServer that carries the DiffRequest for the handler to read."""
+
+    allow_reuse_address: bool = True
 
     def __init__(
         self,
         server_address: tuple[str, int],
-        RequestHandlerClass: type[DiffHandler],
-        old_file: str | Path,
-        new_file: str | Path,
-        file_path: str,
+        handler: type[DiffHandler],
+        diff_request: DiffRequest,
     ) -> None:
-        super().__init__(server_address, RequestHandlerClass)
-        self.old_file: Final = old_file
-        self.new_file: Final = new_file
-        self.file_path: Final = file_path
+        super().__init__(server_address, handler)
+        self.diff_request: Final[DiffRequest] = diff_request
+
+
+# ─── CLI Argument Parsing ─────────────────────────────────────────────────────
+
+_USAGE = """\
+Usage modes:
+  1. Git difftool:  maxdiff.py <path> <old> <old-hex> <old-mode> <new> <new-hex> <new-mode>
+  2. Standalone:    maxdiff.py <old.maxpat> <new.maxpat>
+"""
+
+
+def parse_args(argv: Sequence[str], cwd: Path) -> DiffRequest | None:
+    """Return a DiffRequest from raw CLI arguments, or None on invalid input."""
+
+    def resolve(raw: str) -> Path:
+        return Path(raw) if raw in _NULL_PATHS else cwd / raw
+
+    match list(argv):
+        case [path, old_raw, _, _, new_raw, _, _]:  # git difftool (7 args)
+            return DiffRequest(
+                old_file=resolve(old_raw),
+                new_file=resolve(new_raw),
+                file_path=path,
+            )
+        case [old_arg, new_arg]:  # standalone (2 args)
+            old, new = cwd / old_arg, cwd / new_arg
+            return DiffRequest(
+                old_file=old,
+                new_file=new,
+                file_path=f"{old.name} vs {new.name}",
+            )
+        case _:
+            return None
+
+
+# ─── Entry Point ──────────────────────────────────────────────────────────────
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Max/MSP Patch Diff Tool")
-    _ = parser.add_argument("args", nargs="*", help="Arguments")
-    raw_args = parser.parse_args().args
-
+    parser = argparse.ArgumentParser(
+        description="Max/MSP Patch Diff Tool", add_help=False
+    )
+    _ = parser.add_argument("args", nargs="*")
     cwd = Path.cwd()
-    # Change to the script's directory to serve static files correctly
-    import os
 
+    # `parse_args().args` is typed `Any` by argparse stubs; cast to the known
+    # concrete type immediately so `Any` doesn't propagate further.
+    raw: list[str] = parser.parse_args().args
+
+    request = parse_args(raw, cwd)
+    if request is None:
+        print(_USAGE)
+        return
+
+    # Serve static files from the script's directory.
     os.chdir(Path(__file__).parent.resolve())
 
-    match raw_args:
-        case [path, old_raw, _, _, new_raw, _, _]:  # Git difftool mode
-            file_path = path
-            old_file = cwd / old_raw if old_raw != "/dev/null" else Path(old_raw)
-            new_file = cwd / new_raw if new_raw != "/dev/null" else Path(new_raw)
-        case [old_arg, new_arg]:  # Standalone mode
-            file_path = f"{Path(old_arg).name} vs {Path(new_arg).name}"
-            old_file, new_file = cwd / old_arg, cwd / new_arg
-        case _:
-            print("""Usage modes:
-    1. Git difftool: maxdiff.py path old_file old_hex old_mode new_file new_hex new_mode
-    2. Standalone:   maxdiff.py old.maxpat new.maxpat""")
-            return
-
-    with DiffServer(("", 0), DiffHandler, old_file, new_file, file_path) as httpd:
-        port = httpd.server_address[1]
+    with DiffServer(("", 0), DiffHandler, request) as server:
+        port = server.server_address[1]
         url = f"http://localhost:{port}"
         print(f"Serving diff tool at {url}\nPress Ctrl+C to stop.")
         _ = webbrowser.open(url)
         try:
-            httpd.serve_forever()
+            server.serve_forever()
         except KeyboardInterrupt:
-            print("\nShutting down...")
+            print("\nShutting down.")
 
 
 if __name__ == "__main__":

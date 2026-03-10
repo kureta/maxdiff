@@ -3,15 +3,22 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { MaxDiff } from "../src/DiffEngine.js";
-import { DiffPresenter } from "../src/DiffPresenter.js";
-import type { BoxViewModel, LineViewModel } from "../src/components.js";
+import { MaxDiff, boxClass } from "../src/DiffEngine.ts";
+import type { MaxPatch } from "../src/DiffEngine.ts";
+import { DiffPresenter } from "../src/DiffPresenter.ts";
+import type { BoxViewModel, LineViewModel } from "../src/components.ts";
+
+// Convenience wrapper: makePatch returns loosely-typed objects for test ergonomics,
+// so we cast to MaxPatch here rather than threading strict types through all helpers.
+function process(a: unknown, b: unknown) {
+  return DiffPresenter.renderDiff(
+    MaxDiff.annotate(a as MaxPatch, b as MaxPatch),
+  );
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function loadPatch(filename: string) {
   return JSON.parse(
@@ -19,7 +26,6 @@ function loadPatch(filename: string) {
   );
 }
 
-/** Build a minimal valid MaxPatchJSON from a flat list of boxes and lines. */
 function makePatch(
   boxes: object[],
   lines: { src: [string, number]; dst: [string, number] }[] = [],
@@ -35,7 +41,6 @@ function makePatch(
   };
 }
 
-/** Build a minimal box object. */
 function box(id: string, text: string, extra: object = {}): object {
   return {
     id,
@@ -48,31 +53,25 @@ function box(id: string, text: string, extra: object = {}): object {
   };
 }
 
-/** Assert no line references a box ID absent from the box list. */
 function assertNoOrphanLines(result: {
   boxes: BoxViewModel[];
   lines: LineViewModel[];
 }): void {
   const ids = new Set(result.boxes.map((b) => b.id));
   for (const l of result.lines) {
-    assert.ok(
-      ids.has(l.source[0]),
-      `Orphan line source "${l.source[0]}" has no corresponding box`,
-    );
+    assert.ok(ids.has(l.source[0]), `Orphan line source "${l.source[0]}"`);
     assert.ok(
       ids.has(l.destination[0]),
-      `Orphan line destination "${l.destination[0]}" has no corresponding box`,
+      `Orphan line destination "${l.destination[0]}"`,
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Unit tests: MaxDiff.getClass
-// ---------------------------------------------------------------------------
+// ─── boxClass ─────────────────────────────────────────────────────────────────
 
-test("getClass: returns maxclass when not newobj", () => {
+test("boxClass: returns maxclass when not newobj", () => {
   assert.equal(
-    MaxDiff.getClass({
+    boxClass({
       id: "x",
       maxclass: "live.dial",
       numinlets: 1,
@@ -83,9 +82,9 @@ test("getClass: returns maxclass when not newobj", () => {
   );
 });
 
-test("getClass: extracts first token of text for newobj", () => {
+test("boxClass: extracts first token of text for newobj", () => {
   assert.equal(
-    MaxDiff.getClass({
+    boxClass({
       id: "x",
       maxclass: "newobj",
       text: "scale 0 127 0 1",
@@ -97,9 +96,9 @@ test("getClass: extracts first token of text for newobj", () => {
   );
 });
 
-test("getClass: returns empty string for newobj with no text", () => {
+test("boxClass: returns empty string for newobj with no text", () => {
   assert.equal(
-    MaxDiff.getClass({
+    boxClass({
       id: "x",
       maxclass: "newobj",
       numinlets: 1,
@@ -110,47 +109,45 @@ test("getClass: returns empty string for newobj with no text", () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// MaxDiff.compare — synthetic data
-// ---------------------------------------------------------------------------
+// ─── MaxDiff.annotate — box classification ────────────────────────────────────
 
-test("Identical patches → zero diff ops", () => {
+test("Identical patches → no _diff annotations", () => {
   const p = makePatch([box("obj-1", "cycle~")]);
-  assert.equal(MaxDiff.compare(p, p).length, 0);
+  assert.ok(MaxDiff.annotate(p, p).patcher.boxes.every((b) => !b.box._diff));
 });
 
 test("Identical patches → Presenter marks all boxes unchanged", () => {
   const p = makePatch([box("obj-1", "cycle~"), box("obj-2", "dac~")]);
-  const result = DiffPresenter.process(p, p, MaxDiff.compare(p, p));
+  const result = process(p, p);
   assert.equal(result.boxes.length, 2);
   assert.ok(result.boxes.every((b) => b.diffState === "unchanged"));
 });
 
-test("Added box → one 'added' op", () => {
+test("Added box → annotated as 'added'", () => {
   const a = makePatch([]);
   const b = makePatch([box("obj-1", "cycle~")]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 1);
-  assert.equal(diffs[0].type, "added");
+  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  assert.equal(boxes.length, 1);
+  assert.equal(boxes[0].box._diff?.type, "added");
 });
 
-test("Deleted box → one 'deleted' op", () => {
+test("Deleted box → annotated as 'deleted'", () => {
   const a = makePatch([box("obj-1", "cycle~")]);
   const b = makePatch([]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 1);
-  assert.equal(diffs[0].type, "deleted");
+  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  assert.equal(boxes.length, 1);
+  assert.equal(boxes[0].box._diff?.type, "deleted");
 });
 
-test("Attribute change → 'modified' op with correct field delta", () => {
+test("Attribute change → 'modified' with correct field delta", () => {
   const a = makePatch([box("obj-1", "cycle~", { some_param: 0 })]);
   const b = makePatch([box("obj-1", "cycle~", { some_param: 1 })]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 1);
-  assert.equal(diffs[0].type, "modified");
-  if (diffs[0].type === "modified") {
-    assert.deepEqual(diffs[0].fields.some_param, { from: 0, to: 1 });
-  }
+  const annotatedBox = MaxDiff.annotate(a, b).patcher.boxes[0].box;
+  assert.equal(annotatedBox._diff?.type, "modified");
+  assert.deepEqual(annotatedBox._diff?.fields?.["some_param"], {
+    from: 0,
+    to: 1,
+  });
 });
 
 test("Only patching_rect change → 'moved', not 'modified'", () => {
@@ -160,9 +157,10 @@ test("Only patching_rect change → 'moved', not 'modified'", () => {
   const b = makePatch([
     box("obj-1", "cycle~", { patching_rect: [200, 300, 60, 22] }),
   ]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 1);
-  assert.equal(diffs[0].type, "moved");
+  assert.equal(
+    MaxDiff.annotate(a, b).patcher.boxes[0].box._diff?.type,
+    "moved",
+  );
 });
 
 test("Only presentation_rect change → 'moved', not 'modified'", () => {
@@ -178,9 +176,10 @@ test("Only presentation_rect change → 'moved', not 'modified'", () => {
       presentation_rect: [50, 50, 60, 22],
     }),
   ]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 1);
-  assert.equal(diffs[0].type, "moved");
+  assert.equal(
+    MaxDiff.annotate(a, b).patcher.boxes[0].box._diff?.type,
+    "moved",
+  );
 });
 
 test("patching_rect + attribute change → 'modified', not 'moved'", () => {
@@ -190,29 +189,26 @@ test("patching_rect + attribute change → 'modified', not 'moved'", () => {
   const b = makePatch([
     box("obj-1", "cycle~", { patching_rect: [100, 100, 60, 22], foo: "b" }),
   ]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs[0].type, "modified");
+  assert.equal(
+    MaxDiff.annotate(a, b).patcher.boxes[0].box._diff?.type,
+    "modified",
+  );
 });
 
-// ---------------------------------------------------------------------------
-// Matching passes
-// ---------------------------------------------------------------------------
+// ─── Matching Passes ──────────────────────────────────────────────────────────
 
-test("Pass 1: same-ID same-class stays matched; unique-class neighbour also matched via Pass 1.5", () => {
-  // obj-1=cycle~ anchored by ID. obj-2=dac~ in A, obj-99=dac~ in B: dac~ is
-  // unique in both so Pass 1.5 also matches them. Zero diff ops overall.
+test("Pass 1: same-ID same-class stays matched; unique-class neighbour matched via Pass 1.5", () => {
   const a = makePatch([box("obj-1", "cycle~"), box("obj-2", "dac~")]);
   const b = makePatch([box("obj-1", "cycle~"), box("obj-99", "dac~")]);
-  assert.equal(MaxDiff.compare(a, b).length, 0);
+  assert.ok(MaxDiff.annotate(a, b).patcher.boxes.every((b) => !b.box._diff));
 });
 
 test("Pass 1: same ID but different class → treated as delete + add", () => {
   const a = makePatch([box("obj-1", "cycle~")]);
   const b = makePatch([{ ...box("obj-1", "dac~"), maxclass: "newobj" }]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 2);
-  assert.ok(diffs.some((d) => d.type === "deleted"));
-  assert.ok(diffs.some((d) => d.type === "added"));
+  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  assert.ok(boxes.some((b) => b.box._diff?.type === "deleted"));
+  assert.ok(boxes.some((b) => b.box._diff?.type === "added"));
 });
 
 test("Pass 1.5: unique-class box matched across different IDs → no delete/add", () => {
@@ -224,23 +220,20 @@ test("Pass 1.5: unique-class box matched across different IDs → no delete/add"
     { ...box("obj-4", "live.gain~"), maxclass: "live.gain~" },
     box("obj-2", "dac~"),
   ]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.ok(!diffs.some((d) => d.type === "deleted"));
-  assert.ok(!diffs.some((d) => d.type === "added"));
+  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  assert.ok(!boxes.some((b) => b.box._diff?.type === "deleted"));
+  assert.ok(!boxes.some((b) => b.box._diff?.type === "added"));
 });
 
 test("Pass 1.5: ambiguous class (two of same) → no unique-class match", () => {
-  // Two cycle~ in A, two in B, all different IDs — ambiguous, none matched
   const a = makePatch([box("obj-1", "cycle~"), box("obj-2", "cycle~")]);
   const b = makePatch([box("obj-3", "cycle~"), box("obj-4", "cycle~")]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.filter((d) => d.type === "deleted").length, 2);
-  assert.equal(diffs.filter((d) => d.type === "added").length, 2);
+  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  assert.equal(boxes.filter((b) => b.box._diff?.type === "deleted").length, 2);
+  assert.equal(boxes.filter((b) => b.box._diff?.type === "added").length, 2);
 });
 
 test("Pass 2: topological match via shared anchored neighbour", () => {
-  // obj-1=dac~ anchored by ID. obj-A/obj-B are both gain~ connected to inlet 0
-  // of obj-1 — same topology, so Pass 2 matches them across different IDs.
   const a = makePatch(
     [box("obj-1", "dac~"), box("obj-A", "gain~")],
     [{ src: ["obj-A", 0], dst: ["obj-1", 0] }],
@@ -249,14 +242,12 @@ test("Pass 2: topological match via shared anchored neighbour", () => {
     [box("obj-1", "dac~"), box("obj-B", "gain~")],
     [{ src: ["obj-B", 0], dst: ["obj-1", 0] }],
   );
-  const diffs = MaxDiff.compare(a, b);
-  assert.ok(!diffs.some((d) => d.type === "deleted"));
-  assert.ok(!diffs.some((d) => d.type === "added"));
+  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  assert.ok(!boxes.some((b) => b.box._diff?.type === "deleted"));
+  assert.ok(!boxes.some((b) => b.box._diff?.type === "added"));
 });
 
-// ---------------------------------------------------------------------------
-// Presentation view scenarios
-// ---------------------------------------------------------------------------
+// ─── Presentation View ────────────────────────────────────────────────────────
 
 test("Box added to presentation view → 'modified' with presentation field", () => {
   const a = makePatch([box("obj-1", "cycle~")]);
@@ -266,15 +257,14 @@ test("Box added to presentation view → 'modified' with presentation field", ()
       presentation_rect: [50, 50, 60, 22],
     }),
   ]);
-  const diffs = MaxDiff.compare(a, b);
-  assert.equal(diffs.length, 1);
-  assert.equal(diffs[0].type, "modified");
-  if (diffs[0].type === "modified") {
-    assert.ok("presentation" in diffs[0].fields);
-  }
+  const annotatedBox = MaxDiff.annotate(a, b).patcher.boxes[0].box;
+  assert.equal(annotatedBox._diff?.type, "modified");
+  assert.ok(
+    annotatedBox._diff?.fields && "presentation" in annotatedBox._diff.fields,
+  );
 });
 
-test("Box removed from presentation view → 'modified'; Presenter exposes presentation attrDiff", () => {
+test("Box removed from presentation view → attrDiffs exposes presentation; presentation_rect excluded", () => {
   const a = makePatch([
     box("obj-1", "cycle~", {
       presentation: 1,
@@ -282,15 +272,14 @@ test("Box removed from presentation view → 'modified'; Presenter exposes prese
     }),
   ]);
   const b = makePatch([box("obj-1", "cycle~", { presentation: 0 })]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   const vm = result.boxes.find((bx) => bx.id === "obj-1")!;
   assert.equal(vm.diffState, "modified");
   assert.ok(vm.attrDiffs?.some((d) => d.key === "presentation"));
-  // presentation_rect is in excludedKeys — must not appear in attrDiffs
   assert.ok(!vm.attrDiffs?.some((d) => d.key === "presentation_rect"));
 });
 
-test("Deleted box with presentation_rect → presentation_rect preserved on removed BoxViewModel", () => {
+test("Deleted box with presentation_rect → preserved on removed BoxViewModel", () => {
   const a = makePatch([
     box("obj-1", "cycle~", {
       presentation: 1,
@@ -298,20 +287,18 @@ test("Deleted box with presentation_rect → presentation_rect preserved on remo
     }),
   ]);
   const b = makePatch([]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   const vm = result.boxes.find((bx) => bx.id === "obj-1_removed")!;
-  assert.ok(vm, "Removed box must exist with _removed suffix");
+  assert.ok(vm, "Removed box must exist");
   assert.deepEqual(vm.presentation_rect, [50, 50, 60, 22]);
 });
 
-// ---------------------------------------------------------------------------
-// DiffPresenter — BoxViewModel shape
-// ---------------------------------------------------------------------------
+// ─── DiffPresenter — BoxViewModel ─────────────────────────────────────────────
 
 test("Presenter: added box has patcherA=null", () => {
   const a = makePatch([]);
   const b = makePatch([box("obj-1", "cycle~")]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   assert.equal(result.boxes[0].diffState, "added");
   assert.equal(result.boxes[0].patcherA, null);
 });
@@ -319,16 +306,16 @@ test("Presenter: added box has patcherA=null", () => {
 test("Presenter: removed box gets _removed suffix and patcherB=null", () => {
   const a = makePatch([box("obj-1", "cycle~")]);
   const b = makePatch([]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   assert.equal(result.boxes[0].id, "obj-1_removed");
   assert.equal(result.boxes[0].diffState, "removed");
   assert.equal(result.boxes[0].patcherB, null);
 });
 
-test("Presenter: modified box carries oldText from previous", () => {
+test("Presenter: modified box carries oldText", () => {
   const a = makePatch([box("obj-1", "scale 0 127 0 1")]);
   const b = makePatch([box("obj-1", "scale 0 127 0 2")]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   assert.equal(result.boxes[0].diffState, "modified");
   assert.equal(result.boxes[0].oldText, "scale 0 127 0 1");
 });
@@ -344,23 +331,21 @@ test("Presenter: attrDiffs excludes patching_rect and presentation_rect", () => 
   const b = makePatch([
     box("obj-1", "cycle~", { patching_rect: [100, 100, 60, 22], foo: "b" }),
   ]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
-  const attrKeys = result.boxes[0].attrDiffs?.map((d) => d.key) ?? [];
-  assert.ok(!attrKeys.includes("patching_rect"));
-  assert.ok(!attrKeys.includes("presentation_rect"));
-  assert.ok(attrKeys.includes("foo"));
+  const result = process(a, b);
+  const keys = result.boxes[0].attrDiffs?.map((d) => d.key) ?? [];
+  assert.ok(!keys.includes("patching_rect"));
+  assert.ok(!keys.includes("presentation_rect"));
+  assert.ok(keys.includes("foo"));
 });
 
-// ---------------------------------------------------------------------------
-// DiffPresenter — LineViewModel
-// ---------------------------------------------------------------------------
+// ─── DiffPresenter — LineViewModel ────────────────────────────────────────────
 
 test("Lines: unchanged when both endpoints exist in both patches", () => {
   const p = makePatch(
     [box("obj-1", "cycle~"), box("obj-2", "dac~")],
     [{ src: ["obj-1", 0], dst: ["obj-2", 0] }],
   );
-  const result = DiffPresenter.process(p, p, MaxDiff.compare(p, p));
+  const result = process(p, p);
   assert.equal(result.lines.length, 1);
   assert.equal(result.lines[0].diffState, "unchanged");
 });
@@ -371,9 +356,9 @@ test("Lines: deleted box makes its lines 'removed' with _removed source", () => 
     [{ src: ["obj-1", 0], dst: ["obj-2", 0] }],
   );
   const b = makePatch([box("obj-2", "dac~")]);
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   const removed = result.lines.find((l) => l.diffState === "removed")!;
-  assert.ok(removed, "Should have a removed line");
+  assert.ok(removed);
   assert.equal(removed.source[0], "obj-1_removed");
   assert.equal(removed.destination[0], "obj-2");
 });
@@ -384,31 +369,21 @@ test("Lines: added box makes its lines 'added'", () => {
     [box("obj-1", "cycle~"), box("obj-2", "dac~")],
     [{ src: ["obj-1", 0], dst: ["obj-2", 0] }],
   );
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   const added = result.lines.find((l) => l.diffState === "added")!;
-  assert.ok(added, "Should have an added line");
+  assert.ok(added);
   assert.equal(added.source[0], "obj-1");
 });
 
 test("Lines: no orphan endpoints in any scenario", () => {
   const a = loadPatch("edge_cases_a.maxpat");
   const b = loadPatch("edge_cases_b.maxpat");
-  assertNoOrphanLines(DiffPresenter.process(a, b, MaxDiff.compare(a, b)));
+  assertNoOrphanLines(process(a, b) as never);
 });
 
-// ---------------------------------------------------------------------------
-// The key-collision bug: B recycles an ID that A deleted
-// ---------------------------------------------------------------------------
+// ─── ID Collision Bug Regression ─────────────────────────────────────────────
 
-test("ID collision: B's obj-4 is a heuristic match for A's obj-10, while A's obj-4 is deleted", () => {
-  // A: obj-10=live.gain~ (pos 0,0), obj-4=old-thing (deleted), obj-2=dac~
-  // B: obj-4=live.gain~ (pos 200,200 — 'moved' op emitted), obj-2=dac~, obj-99=brand-new
-  //
-  // live.gain~ is unique → Pass 1.5 matches obj-10↔obj-4. Since their patching_rects
-  // differ, a 'moved' op is emitted with current.id="obj-4".
-  // A's obj-4 (old-thing) is also deleted → deletedMapByAId["obj-4"].
-  // The old single-map implementation would let the deleted entry overwrite the moved
-  // entry, silently dropping live.gain~ and breaking all its lines.
+test("ID collision: B recycles an ID that A deleted — no data loss", () => {
   const a = makePatch(
     [
       {
@@ -437,30 +412,25 @@ test("ID collision: B's obj-4 is a heuristic match for A's obj-10, while A's obj
     [{ src: ["obj-4", 0], dst: ["obj-2", 0] }],
   );
 
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
+  assertNoOrphanLines(result as never);
 
-  assertNoOrphanLines(result);
-
-  // live.gain~ (B's obj-4) must be present and not dropped or misclassified
   const gainVm = result.boxes.find(
     (bx) => bx.id === "obj-4" && bx.maxclass === "live.gain~",
   )!;
   assert.ok(gainVm, "live.gain~ must be present");
   assert.equal(gainVm.diffState, "moved");
 
-  // A's old-thing must be present as obj-4_removed
   const removedVm = result.boxes.find((bx) => bx.id === "obj-4_removed")!;
   assert.ok(removedVm, "Deleted old-thing must appear as obj-4_removed");
   assert.equal(removedVm.diffState, "removed");
 
-  // The live.gain~→dac~ line must survive as unchanged
   const gainLine = result.lines.find(
     (l) => l.source[0] === "obj-4" && l.destination[0] === "obj-2",
   )!;
-  assert.ok(gainLine, "Line from live.gain~ to dac~ must exist");
+  assert.ok(gainLine);
   assert.equal(gainLine.diffState, "unchanged");
 
-  // The old-thing→dac~ line must be removed
   const removedLine = result.lines.find(
     (l) => l.source[0] === "obj-4_removed",
   )!;
@@ -473,29 +443,30 @@ test("ID collision: B's obj-4 is a heuristic match for A's obj-10, while A's obj
   );
 });
 
-// ---------------------------------------------------------------------------
-// Integration: real patch files
-// ---------------------------------------------------------------------------
+// ─── Integration: Real Patch Files ────────────────────────────────────────────
 
 test("Real patches: no orphan lines", () => {
   const a = loadPatch("edge_cases_a.maxpat");
   const b = loadPatch("edge_cases_b.maxpat");
-  assertNoOrphanLines(DiffPresenter.process(a, b, MaxDiff.compare(a, b)));
+  assertNoOrphanLines(process(a, b) as never);
 });
 
 test("Real patches: expected box diff states", () => {
   const a = loadPatch("edge_cases_a.maxpat");
   const b = loadPatch("edge_cases_b.maxpat");
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
   const byId = Object.fromEntries(result.boxes.map((bx) => [bx.id, bx]));
 
-  assert.equal(byId["obj-1"].diffState, "unchanged", "cycle~");
-  assert.equal(byId["obj-2"].diffState, "unchanged", "dac~");
-  assert.equal(byId["obj-6"].diffState, "unchanged", "live.dial");
-  assert.equal(byId["obj-7"].diffState, "unchanged", "print");
-  assert.equal(byId["obj-9"].diffState, "unchanged", "toggle");
-  assert.equal(byId["obj-10"].diffState, "unchanged", "metro 500");
-  assert.equal(byId["obj-11"].diffState, "unchanged", "counter");
+  for (const id of [
+    "obj-1",
+    "obj-2",
+    "obj-6",
+    "obj-7",
+    "obj-9",
+    "obj-10",
+    "obj-11",
+  ])
+    assert.equal(byId[id].diffState, "unchanged", id);
 
   assert.equal(byId["obj-3"].diffState, "modified", "gain~ got extra_param");
   assert.ok(byId["obj-3"].attrDiffs?.some((d) => d.key === "extra_param"));
@@ -522,7 +493,7 @@ test("Real patches: expected box diff states", () => {
 test("Real patches: expected line diff states", () => {
   const a = loadPatch("edge_cases_a.maxpat");
   const b = loadPatch("edge_cases_b.maxpat");
-  const result = DiffPresenter.process(a, b, MaxDiff.compare(a, b));
+  const result = process(a, b);
 
   const key = (l: LineViewModel) =>
     `${l.source[0]}:${l.source[1]}->${l.destination[0]}:${l.destination[1]}`;
