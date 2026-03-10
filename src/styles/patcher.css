@@ -1,0 +1,38 @@
+:host {
+  display: block;
+  position: relative;
+  transform-origin: top left;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--border-color, #444);
+  box-sizing: border-box;
+}
+#svg-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.patchline {
+  stroke: var(--io-color, #888);
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+}
+.patchline.added {
+  stroke: var(--accent-added, #4caf50);
+}
+.patchline.removed {
+  stroke: var(--accent-removed, #f44336);
+  stroke-dasharray: 5, 5;
+}
+.patchline.modified {
+  stroke: var(--accent-modified, #ff9800);
+}
+.patchline.moved {
+  stroke: var(--accent-moved, #2196f3);
+  stroke-dasharray: 2, 2;
+}

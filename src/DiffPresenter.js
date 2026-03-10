@@ -1,19 +1,3 @@
-import { AnnotatedBox, AnnotatedMaxPatch, MaxPatch } from "./DiffEngine.js";
-import { AttrDiff, BoxViewModel, LineViewModel } from "./components.js";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface RenderModel {
-  readonly boxes: readonly BoxViewModel[];
-  readonly lines: readonly LineViewModel[];
-}
-
-export interface MetadataDiff {
-  readonly key: string;
-  readonly old?: unknown;
-  readonly new?: unknown;
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Box attributes excluded from user-visible diffs (handled separately or noise). */
@@ -29,24 +13,24 @@ const HIDDEN_META_KEYS = new Set(["boxes", "lines", "rect"]);
 
 // ─── Empty Patch Fallback ─────────────────────────────────────────────────────
 
-const EMPTY_PATCH: MaxPatch = {
+const EMPTY_PATCH = {
   patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
 };
 
-function safe(patch: MaxPatch | undefined): MaxPatch {
+function safe(patch) {
   return patch?.patcher ? patch : EMPTY_PATCH;
 }
 
 // ─── Box View Model Helpers ───────────────────────────────────────────────────
 
-function attrDiffsFor(box: AnnotatedBox): readonly AttrDiff[] {
+function attrDiffsFor(box) {
   if (!box._diff?.fields) return [];
   return Object.entries(box._diff.fields)
     .filter(([key]) => !HIDDEN_ATTR_KEYS.has(key))
     .map(([key, delta]) => ({ key, old: delta.from, new: delta.to }));
 }
 
-function annotatedBoxToViewModel(box: AnnotatedBox): BoxViewModel {
+function annotatedBoxToViewModel(box) {
   const diff = box._diff;
   if (!diff) {
     return {
@@ -90,10 +74,10 @@ function annotatedBoxToViewModel(box: AnnotatedBox): BoxViewModel {
 
 export class DiffPresenter {
   /** Render a plain (non-diff) patch with no change annotations. Used for before/after views. */
-  static render(patch: MaxPatch | undefined): RenderModel {
+  static render(patch) {
     const p = safe(patch);
-    const boxes: BoxViewModel[] = p.patcher.boxes.map((b) => ({ ...b.box }));
-    const lines: LineViewModel[] = (p.patcher.lines ?? []).map((l) => ({
+    const boxes = p.patcher.boxes.map((b) => ({ ...b.box }));
+    const lines = (p.patcher.lines ?? []).map((l) => ({
       source: l.patchline.source,
       destination: l.patchline.destination,
     }));
@@ -101,11 +85,11 @@ export class DiffPresenter {
   }
 
   /** Render an annotated diff patch. */
-  static renderDiff(annotated: AnnotatedMaxPatch): RenderModel {
-    const boxes: BoxViewModel[] = annotated.patcher.boxes.map((b) =>
+  static renderDiff(annotated) {
+    const boxes = annotated.patcher.boxes.map((b) =>
       annotatedBoxToViewModel(b.box),
     );
-    const lines: LineViewModel[] = annotated.patcher.lines.map((l) => ({
+    const lines = annotated.patcher.lines.map((l) => ({
       source: l.patchline.source,
       destination: l.patchline.destination,
       diffState: l.patchline._diff
@@ -118,9 +102,7 @@ export class DiffPresenter {
   }
 
   /** Extract patch-level metadata (everything except boxes, lines, rect). */
-  static metadata(
-    patch: MaxPatch | undefined,
-  ): Readonly<Record<string, unknown>> {
+  static metadata(patch) {
     if (!patch?.patcher) return {};
     return Object.fromEntries(
       Object.entries(patch.patcher).filter(([k]) => !HIDDEN_META_KEYS.has(k)),
@@ -128,10 +110,7 @@ export class DiffPresenter {
   }
 
   /** Compare patch-level metadata between two patches. */
-  static compareMetadata(
-    patchA: MaxPatch | undefined,
-    patchB: MaxPatch | undefined,
-  ): readonly MetadataDiff[] {
+  static compareMetadata(patchA, patchB) {
     const metaA = this.metadata(patchA);
     const metaB = this.metadata(patchB);
     const keys = new Set([...Object.keys(metaA), ...Object.keys(metaB)]);

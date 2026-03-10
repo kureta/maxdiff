@@ -1,40 +1,7 @@
-// ─── Domain Types ────────────────────────────────────────────────────────────
-
-export type Rect = [number, number, number, number];
-
-export interface Box {
-  readonly id: string;
-  readonly maxclass: string;
-  readonly numinlets: number;
-  readonly numoutlets: number;
-  readonly patching_rect: Rect;
-  readonly text?: string;
-  readonly patcher?: Patcher;
-  readonly presentation?: number;
-  readonly presentation_rect?: Rect;
-  readonly [key: string]: unknown;
-}
-
-export interface PatchLine {
-  readonly source: [string, number];
-  readonly destination: [string, number];
-}
-
-export interface Patcher {
-  readonly boxes: ReadonlyArray<{ readonly box: Box }>;
-  readonly lines: ReadonlyArray<{ readonly patchline: PatchLine }>;
-  readonly rect: Rect;
-  readonly [key: string]: unknown;
-}
-
-export interface MaxPatch {
-  readonly patcher: Patcher;
-}
-
 // ─── Pure Helper ─────────────────────────────────────────────────────────────
 
 /** Returns the semantic class of a box — the maxclass, or the first token of text for generic objects. */
-export function boxClass(box: Box): string {
+export function boxClass(box) {
   return box.maxclass !== "newobj"
     ? box.maxclass
     : ((box.text ?? "").split(" ")[0] ?? "");
@@ -42,16 +9,11 @@ export function boxClass(box: Box): string {
 
 // ─── Matching Passes ──────────────────────────────────────────────────────────
 
-type Pair = [Box, Box];
-
 /** Pass 1: Match by identical ID and identical class. */
-function matchById(
-  mapA: ReadonlyMap<string, Box>,
-  mapB: ReadonlyMap<string, Box>,
-): { pairs: Pair[]; anchoredA: Set<string>; anchoredB: Set<string> } {
-  const pairs: Pair[] = [];
-  const anchoredA = new Set<string>();
-  const anchoredB = new Set<string>();
+function matchById(mapA, mapB) {
+  const pairs = [];
+  const anchoredA = new Set();
+  const anchoredB = new Set();
 
   for (const [id, boxA] of mapA) {
     const boxB = mapB.get(id);
@@ -65,13 +27,7 @@ function matchById(
 }
 
 /** Pass 1.5: Among unmatched boxes, match where a class appears exactly once on each side. */
-function matchByUniqueClass(
-  mapA: ReadonlyMap<string, Box>,
-  mapB: ReadonlyMap<string, Box>,
-  anchoredA: Set<string>,
-  anchoredB: Set<string>,
-  pairs: Pair[],
-): void {
+function matchByUniqueClass(mapA, mapB, anchoredA, anchoredB, pairs) {
   const uniqA = uniqueClassMap(mapA, anchoredA);
   const uniqB = uniqueClassMap(mapB, anchoredB);
 
@@ -84,17 +40,14 @@ function matchByUniqueClass(
   }
 }
 
-function uniqueClassMap(
-  map: ReadonlyMap<string, Box>,
-  exclude: ReadonlySet<string>,
-): Map<string, Box> {
-  const seen = new Map<string, Box | null>();
+function uniqueClassMap(map, exclude) {
+  const seen = new Map();
   for (const [id, box] of map) {
     if (exclude.has(id)) continue;
     const cls = boxClass(box);
     seen.set(cls, seen.has(cls) ? null : box);
   }
-  const unique = new Map<string, Box>();
+  const unique = new Map();
   for (const [cls, box] of seen) {
     if (box !== null) unique.set(cls, box);
   }
@@ -103,14 +56,14 @@ function uniqueClassMap(
 
 /** Pass 2: Match unanchored boxes by their topological signature relative to already-anchored neighbours. */
 function matchByTopology(
-  mapA: ReadonlyMap<string, Box>,
-  mapB: ReadonlyMap<string, Box>,
-  linesA: readonly PatchLine[],
-  linesB: readonly PatchLine[],
-  anchoredA: Set<string>,
-  anchoredB: Set<string>,
-  pairs: Pair[],
-): void {
+  mapA,
+  mapB,
+  linesA,
+  linesB,
+  anchoredA,
+  anchoredB,
+  pairs,
+) {
   const sigA = buildSignatureMap(mapA, linesA, anchoredA);
   const sigB = buildSignatureMap(mapB, linesB, anchoredB);
 
@@ -127,15 +80,11 @@ function matchByTopology(
   }
 }
 
-function buildSignatureMap(
-  map: ReadonlyMap<string, Box>,
-  lines: readonly PatchLine[],
-  anchored: ReadonlySet<string>,
-): Map<string, [string, Box]> {
-  const result = new Map<string, [string, Box]>();
+function buildSignatureMap(map, lines, anchored) {
+  const result = new Map();
   for (const [id, box] of map) {
     if (anchored.has(id)) continue;
-    const tokens: string[] = [];
+    const tokens = [];
     for (const { source, destination } of lines) {
       if (destination[0] === id && anchored.has(source[0]))
         tokens.push(`in:${destination[1]}<-${source[0]}:${source[1]}`);
@@ -149,18 +98,10 @@ function buildSignatureMap(
 
 // ─── Field Diffing ───────────────────────────────────────────────────────────
 
-export interface FieldDelta<T = unknown> {
-  readonly from: T;
-  readonly to: T;
-}
-
 const POSITION_KEYS = new Set(["patching_rect", "presentation_rect", "rect"]);
 
-function diffFields(
-  boxA: Box,
-  boxB: Box,
-): Readonly<Record<string, FieldDelta>> {
-  const fields: Record<string, FieldDelta> = {};
+function diffFields(boxA, boxB) {
+  const fields = {};
   const keys = new Set([...Object.keys(boxA), ...Object.keys(boxB)]);
   keys.delete("id");
 
@@ -171,36 +112,9 @@ function diffFields(
   return fields;
 }
 
-// ─── Annotated Patch Types ────────────────────────────────────────────────────
-
-export interface BoxDiff {
-  readonly type: "added" | "deleted" | "moved" | "modified";
-  readonly previous?: Box;
-  readonly fields?: Readonly<Record<string, FieldDelta>>;
-}
-
-export interface AnnotatedBox extends Box {
-  readonly _diff?: BoxDiff;
-}
-
-export interface AnnotatedPatchLine extends PatchLine {
-  readonly _diff?: { readonly type: "added" | "removed" };
-}
-
-export interface AnnotatedPatcher {
-  readonly boxes: ReadonlyArray<{ readonly box: AnnotatedBox }>;
-  readonly lines: ReadonlyArray<{ readonly patchline: AnnotatedPatchLine }>;
-  readonly rect: Rect;
-  readonly [key: string]: unknown;
-}
-
-export interface AnnotatedMaxPatch {
-  readonly patcher: AnnotatedPatcher;
-}
-
 // ─── Line Key Helper ─────────────────────────────────────────────────────────
 
-function lineKey(src: [string, number], dst: [string, number]): string {
+function lineKey(src, dst) {
   return `${src[0]},${src[1]}-${dst[0]},${dst[1]}`;
 }
 
@@ -208,7 +122,7 @@ function lineKey(src: [string, number], dst: [string, number]): string {
 
 export class MaxDiff {
   /** Produce an annotated version of patchB containing all diff information inline. */
-  static annotate(patchA: MaxPatch, patchB: MaxPatch): AnnotatedMaxPatch {
+  static annotate(patchA, patchB) {
     const boxesA = patchA.patcher.boxes.map((b) => b.box);
     const boxesB = patchB.patcher.boxes.map((b) => b.box);
     const linesA = patchA.patcher.lines?.map((l) => l.patchline) ?? [];
@@ -222,16 +136,16 @@ export class MaxDiff {
     matchByTopology(mapA, mapB, linesA, linesB, anchoredA, anchoredB, pairs);
 
     // Build A-id → B-id map for all matched pairs.
-    const idMapAtoB = new Map<string, string>();
+    const idMapAtoB = new Map();
     // Build B-id → A-side box map for annotating B-side boxes.
-    const pairByBId = new Map<string, Box>();
+    const pairByBId = new Map();
     for (const [boxA, boxB] of pairs) {
       idMapAtoB.set(boxA.id, boxB.id);
       pairByBId.set(boxB.id, boxA);
     }
 
     // Build annotated boxes: B-side first, then deleted A-side boxes.
-    const annotatedBoxes: { box: AnnotatedBox }[] = [];
+    const annotatedBoxes = [];
     for (const boxB of boxesB) {
       const boxA = pairByBId.get(boxB.id);
       if (!boxA) {
@@ -273,8 +187,8 @@ export class MaxDiff {
     const linesMapB = new Map(
       linesB.map((l) => [lineKey(l.source, l.destination), l]),
     );
-    const processedB = new Set<string>();
-    const annotatedLines: { patchline: AnnotatedPatchLine }[] = [];
+    const processedB = new Set();
+    const annotatedLines = [];
 
     for (const lA of linesA) {
       const mappedSrc =

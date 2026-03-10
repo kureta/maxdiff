@@ -1,128 +1,111 @@
-import { DiffPresenter, RenderModel, MetadataDiff } from "./DiffPresenter.js";
-import { MaxDiff, MaxPatch, AnnotatedMaxPatch, Patcher } from "./DiffEngine.js";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-export type ViewMode = "diff" | "before" | "after";
-export type StateChangeType =
-  | "data"
-  | "navigation"
-  | "view"
-  | "zoom"
-  | "layout-reset";
-export interface StateChangeEvent {
-  readonly type: StateChangeType;
-  readonly pivot?: { x: number; y: number };
-}
-
-interface NavEntry {
-  readonly patchA: MaxPatch | null;
-  readonly patchB: MaxPatch | null;
-}
+import { DiffPresenter } from "./DiffPresenter.js";
+import { MaxDiff } from "./DiffEngine.js";
 
 // ─── Empty Patch Fallback ─────────────────────────────────────────────────────
-const EMPTY: MaxPatch = {
-  patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
-};
-function safe(patch: MaxPatch | null): MaxPatch {
+
+const EMPTY = { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
+
+function safe(patch) {
   return patch ?? EMPTY;
 }
 
 // ─── StateManager ─────────────────────────────────────────────────────────────
-export class StateManager extends EventTarget {
-  #patchA: MaxPatch | null = null;
-  #patchB: MaxPatch | null = null;
-  #annotated: AnnotatedMaxPatch = {
-    patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
-  };
 
-  #models: Record<ViewMode, RenderModel> = {
+export class StateManager extends EventTarget {
+  #patchA = null;
+  #patchB = null;
+  #annotated = { patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] } };
+
+  #models = {
     diff: { boxes: [], lines: [] },
     before: { boxes: [], lines: [] },
     after: { boxes: [], lines: [] },
   };
 
-  #metadataDiffs: readonly MetadataDiff[] = [];
-  #navStack: NavEntry[] = [];
+  #metadataDiffs = [];
+  #navStack = [];
 
   zoomLevel = 1.0;
-  viewMode: ViewMode = "diff";
+  viewMode = "diff";
   isPresentation = false;
   showRemovedPresentation = false;
 
   // ── Accessors ───────────────────────────────────────────────────────────────
-  get renderModel(): RenderModel {
+
+  get renderModel() {
     return this.#models[this.viewMode];
   }
 
-  get metadata(): {
-    diffs: readonly MetadataDiff[];
-    values: Readonly<Record<string, unknown>>;
-  } {
+  get metadata() {
     if (this.viewMode === "diff")
       return { diffs: this.#metadataDiffs, values: {} };
     const patch = this.viewMode === "before" ? this.#patchA : this.#patchB;
     return { diffs: [], values: DiffPresenter.metadata(patch ?? undefined) };
   }
 
-  get hasParent(): boolean {
+  get hasParent() {
     return this.#navStack.length > 0;
   }
 
   // ── Data Setters ────────────────────────────────────────────────────────────
-  setFileA(data: MaxPatch): void {
+
+  setFileA(data) {
     this.#patchA = data;
     this.#recalculate();
   }
-  setFileB(data: MaxPatch): void {
+
+  setFileB(data) {
     this.#patchB = data;
     this.#recalculate();
   }
 
-  setInitialData(patchA: MaxPatch, patchB: MaxPatch): void {
+  setInitialData(patchA, patchB) {
     this.#patchA = patchA;
     this.#patchB = patchB;
     this.#recalculate();
   }
 
   // ── View Controls ───────────────────────────────────────────────────────────
-  setZoom(level: number, pivot?: { x: number; y: number }): void {
+
+  setZoom(level, pivot) {
     const clamped = Math.max(0.2, Math.min(level, 3.0));
     if (clamped === this.zoomLevel) return;
     this.zoomLevel = clamped;
     this.#notify("zoom", pivot ? { pivot } : {});
   }
 
-  setViewMode(mode: ViewMode): void {
+  setViewMode(mode) {
     if (this.viewMode === mode) return;
     this.viewMode = mode;
     this.#notify("view");
   }
 
-  togglePresentation(active: boolean): void {
+  togglePresentation(active) {
     if (this.isPresentation === active) return;
     this.isPresentation = active;
     this.#notify("view");
   }
 
-  toggleShowRemovedPresentation(active: boolean): void {
+  toggleShowRemovedPresentation(active) {
     if (this.showRemovedPresentation === active) return;
     this.showRemovedPresentation = active;
     this.#notify("view");
   }
 
-  resetLayout(): void {
+  resetLayout() {
     this.zoomLevel = 1.0;
     this.#recalculate("layout-reset");
   }
 
   // ── Navigation ──────────────────────────────────────────────────────────────
-  enterSubpatch(boxId: string): void {
+
+  enterSubpatch(boxId) {
     const actualId = boxId.replace("_removed", "");
     const [pA, pB] = this.#resolveSubpatch(actualId);
     if (pA || pB) this.#pushSubpatch(pA, pB);
   }
 
-  popSubpatch(): void {
+  popSubpatch() {
     const prev = this.#navStack.pop();
     if (!prev) return;
     this.#patchA = prev.patchA;
@@ -131,7 +114,8 @@ export class StateManager extends EventTarget {
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────
-  #resolveSubpatch(id: string): [Patcher | undefined, Patcher | undefined] {
+
+  #resolveSubpatch(id) {
     for (const { box } of this.#annotated.patcher.boxes) {
       const diff = box._diff;
       if (!diff) {
@@ -152,14 +136,14 @@ export class StateManager extends EventTarget {
     return [boxA?.patcher, boxB?.patcher];
   }
 
-  #pushSubpatch(pA: Patcher | undefined, pB: Patcher | undefined): void {
+  #pushSubpatch(pA, pB) {
     this.#navStack.push({ patchA: this.#patchA, patchB: this.#patchB });
     this.#patchA = pA ? { patcher: pA } : null;
     this.#patchB = pB ? { patcher: pB } : null;
     this.#recalculate("navigation");
   }
 
-  #recalculate(eventType: StateChangeType = "data"): void {
+  #recalculate(eventType = "data") {
     const a = safe(this.#patchA);
     const b = safe(this.#patchB);
 
@@ -178,11 +162,9 @@ export class StateManager extends EventTarget {
     this.#notify(eventType);
   }
 
-  #notify(type: StateChangeType, extras: Partial<StateChangeEvent> = {}): void {
+  #notify(type, extras = {}) {
     this.dispatchEvent(
-      new CustomEvent<StateChangeEvent>("state-change", {
-        detail: { type, ...extras },
-      }),
+      new CustomEvent("state-change", { detail: { type, ...extras } }),
     );
   }
 }

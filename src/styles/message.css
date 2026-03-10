@@ -1,0 +1,4 @@
+:host {
+  background-color: var(--bg-message, #555);
+  border-radius: 10px;
+}

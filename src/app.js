@@ -1,36 +1,30 @@
 import "./components.js";
-import { MaxPatcher, BoxViewModel } from "./components.js";
-import { StateManager, ViewMode, StateChangeEvent } from "./StateManager.js";
-import { MetadataDiff } from "./DiffPresenter.js";
-import type { MaxPatch } from "./DiffEngine.js";
+import { StateManager } from "./StateManager.js";
 
 // ─── HTML Formatting (pure functions) ────────────────────────────────────────
 
-function renderAttrChange(key: string, oldV: unknown, newV: unknown): string {
-  const [label, oldHtml, newHtml] = [
+function renderAttrChange(key, oldV, newV) {
+  const label =
     oldV === undefined
       ? `Added: ${key}`
       : newV === undefined
         ? `Removed: ${key}`
-        : key,
+        : key;
+  const oldHtml =
     oldV !== undefined
       ? `<span class="attr-old">${JSON.stringify(oldV)}</span>`
-      : "",
+      : "";
+  const newHtml =
     newV !== undefined
       ? `<span class="attr-new">${JSON.stringify(newV)}</span>`
-      : "",
-  ];
+      : "";
   return `<div class="attr-change">
   <div class="attr-name">${label}</div>
   ${oldHtml}${newHtml}
 </div>`;
 }
 
-function renderMetadataEntry(
-  key: string,
-  oldV: unknown,
-  newV: unknown,
-): string {
+function renderMetadataEntry(key, oldV, newV) {
   const label =
     oldV === undefined
       ? `Added: ${key}`
@@ -51,10 +45,7 @@ function renderMetadataEntry(
 </div>`;
 }
 
-function renderMetadataPanel(
-  values: Readonly<Record<string, unknown>>,
-  diffs: readonly MetadataDiff[],
-): string {
+function renderMetadataPanel(values, diffs) {
   if (diffs.length > 0)
     return diffs.map((d) => renderMetadataEntry(d.key, d.old, d.new)).join("");
 
@@ -63,18 +54,12 @@ function renderMetadataPanel(
     .join("");
 }
 
-function renderBoxAttrDiffs(attrDiffs: BoxViewModel["attrDiffs"]): string {
+function renderBoxAttrDiffs(attrDiffs) {
   return (attrDiffs ?? [])
     .map((d) => {
       if (d.key === "saved_attribute_attributes") {
-        const oldA =
-          ((d.old as Record<string, unknown> | undefined)?.[
-            "valueof"
-          ] as Record<string, unknown>) ?? {};
-        const newA =
-          ((d.new as Record<string, unknown> | undefined)?.[
-            "valueof"
-          ] as Record<string, unknown>) ?? {};
+        const oldA = d.old?.["valueof"] ?? {};
+        const newA = d.new?.["valueof"] ?? {};
         return [...new Set([...Object.keys(oldA), ...Object.keys(newA)])]
           .filter((k) => JSON.stringify(oldA[k]) !== JSON.stringify(newA[k]))
           .map((k) =>
@@ -93,66 +78,62 @@ function renderBoxAttrDiffs(attrDiffs: BoxViewModel["attrDiffs"]): string {
 
 // ─── DOM Helpers ─────────────────────────────────────────────────────────────
 
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
+function el(id) {
+  return document.getElementById(id);
 }
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 class PatcherApp {
-  readonly #state = new StateManager();
+  #state = new StateManager();
 
-  readonly #patcher = el<MaxPatcher>("patcher");
-  readonly #wrapper = el<HTMLDivElement>("patcher-wrapper");
-  readonly #fileInputs = el<HTMLDivElement>("file-inputs");
-  readonly #viewToggles = el<HTMLDivElement>("view-toggles");
-  readonly #presToggle = el<HTMLInputElement>("presentation-toggle");
-  readonly #showRemToggle = el<HTMLInputElement>("show-removed-toggle");
-  readonly #showRemCont = el<HTMLDivElement>("show-removed-container");
-  readonly #btnReset = el<HTMLButtonElement>("btn-reset-layout");
-  readonly #btnMeta = el<HTMLButtonElement>("btn-metadata");
-  readonly #modal = el<HTMLDivElement>("details-modal");
-  readonly #modalContent = el<HTMLDivElement>("diff-content");
-  readonly #sidebar = el<HTMLDivElement>("metadata-sidebar");
-  readonly #sidebarCont = el<HTMLDivElement>("metadata-content");
-  readonly #btnZoomIn = el<HTMLButtonElement>("btn-zoom-in");
-  readonly #btnZoomOut = el<HTMLButtonElement>("btn-zoom-out");
-  readonly #btnZoomReset = el<HTMLButtonElement>("btn-zoom-reset");
-  readonly #fileInputA = el<HTMLInputElement>("fileInputA");
-  readonly #fileInputB = el<HTMLInputElement>("fileInputB");
+  #patcher = el("patcher");
+  #wrapper = el("patcher-wrapper");
+  #fileInputs = el("file-inputs");
+  #viewToggles = el("view-toggles");
+  #presToggle = el("presentation-toggle");
+  #showRemToggle = el("show-removed-toggle");
+  #showRemCont = el("show-removed-container");
+  #btnReset = el("btn-reset-layout");
+  #btnMeta = el("btn-metadata");
+  #modal = el("details-modal");
+  #modalContent = el("diff-content");
+  #sidebar = el("metadata-sidebar");
+  #sidebarCont = el("metadata-content");
+  #btnZoomIn = el("btn-zoom-in");
+  #btnZoomOut = el("btn-zoom-out");
+  #btnZoomReset = el("btn-zoom-reset");
+  #fileInputA = el("fileInputA");
+  #fileInputB = el("fileInputB");
 
-  readonly #btnBack = Object.assign(document.createElement("button"), {
+  #btnBack = Object.assign(document.createElement("button"), {
     textContent: "Back to Parent",
     hidden: true,
   });
-  readonly #filenameDisplay = Object.assign(document.createElement("span"), {
+  #filenameDisplay = Object.assign(document.createElement("span"), {
     id: "filename-display",
   });
 
   constructor() {
-    el<HTMLDivElement>("controls").prepend(this.#filenameDisplay);
-    el<HTMLDivElement>("controls").appendChild(this.#btnBack);
+    el("controls").prepend(this.#filenameDisplay);
+    el("controls").appendChild(this.#btnBack);
     this.#wireEvents();
     this.#loadInitialData();
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────────
 
-  async #loadInitialData(): Promise<void> {
+  async #loadInitialData() {
     try {
       const res = await fetch("/diff-data");
       if (!res.ok) return;
-      const data = (await res.json()) as {
-        old: unknown;
-        new: unknown;
-        filename?: string;
-      };
+      const data = await res.json();
       this.#fileInputs.hidden = true;
       if (data.filename) {
         document.title = `Diff: ${data.filename}`;
         this.#filenameDisplay.textContent = data.filename;
       }
-      this.#state.setInitialData(data.old as never, data.new as never);
+      this.#state.setInitialData(data.old, data.new);
     } catch {
       console.info("Local server not available; using file inputs.");
     }
@@ -160,7 +141,7 @@ class PatcherApp {
 
   // ── Event Wiring ────────────────────────────────────────────────────────────
 
-  #wireEvents(): void {
+  #wireEvents() {
     // Toggles
     this.#presToggle.onchange = () =>
       this.#state.togglePresentation(this.#presToggle.checked);
@@ -168,11 +149,9 @@ class PatcherApp {
       this.#state.toggleShowRemovedPresentation(this.#showRemToggle.checked);
 
     // View mode radios
-    document
-      .querySelectorAll<HTMLInputElement>('input[name="view"]')
-      .forEach((r) => {
-        r.onchange = () => this.#state.setViewMode(r.value as ViewMode);
-      });
+    document.querySelectorAll('input[name="view"]').forEach((r) => {
+      r.onchange = () => this.#state.setViewMode(r.value);
+    });
 
     // File inputs
     this.#fileInputA.onchange = (e) =>
@@ -189,8 +168,8 @@ class PatcherApp {
     this.#btnMeta.onclick = () => this.#sidebar.classList.toggle("open");
     this.#btnBack.onclick = () => this.#state.popSubpatch();
 
-    el<HTMLButtonElement>("btn-close-modal").onclick = () => this.#closeModal();
-    el<HTMLButtonElement>("btn-close-sidebar").onclick = () =>
+    el("btn-close-modal").onclick = () => this.#closeModal();
+    el("btn-close-sidebar").onclick = () =>
       this.#sidebar.classList.remove("open");
     window.onclick = (e) => {
       if (e.target === this.#modal) this.#closeModal();
@@ -208,11 +187,9 @@ class PatcherApp {
     };
 
     // Patcher interactions
-    this.#patcher.addEventListener("box-click", (e) =>
-      this.#onBoxClick(e as CustomEvent),
-    );
+    this.#patcher.addEventListener("box-click", (e) => this.#onBoxClick(e));
     this.#patcher.addEventListener("box-dblclick", (e) =>
-      this.#onBoxDblClick(e as CustomEvent),
+      this.#onBoxDblClick(e),
     );
 
     // Shutdown beacon
@@ -220,13 +197,13 @@ class PatcherApp {
 
     // State changes
     this.#state.addEventListener("state-change", (e) =>
-      this.#onStateChange((e as CustomEvent<StateChangeEvent>).detail),
+      this.#onStateChange(e.detail),
     );
   }
 
   // ── State Change Handler ────────────────────────────────────────────────────
 
-  #onStateChange({ type, pivot }: StateChangeEvent): void {
+  #onStateChange({ type, pivot }) {
     switch (type) {
       case "data":
       case "navigation":
@@ -249,7 +226,7 @@ class PatcherApp {
     }
   }
 
-  #syncView(): void {
+  #syncView() {
     this.#patcher.toggleAttribute("presentation", this.#state.isPresentation);
     this.#patcher.toggleAttribute("diff", this.#state.viewMode === "diff");
     this.#patcher.showRemovedPresentation = this.#state.showRemovedPresentation;
@@ -265,25 +242,21 @@ class PatcherApp {
 
   // ── Box Interaction ─────────────────────────────────────────────────────────
 
-  #onBoxClick({
-    detail: { box, originalEvent },
-  }: CustomEvent<{ box: BoxViewModel; originalEvent: MouseEvent }>): void {
-    const clickedInfo = (originalEvent.composedPath() as HTMLElement[]).some(
-      (el) => el.classList?.contains("info-indicator"),
-    );
+  #onBoxClick({ detail: { box, originalEvent } }) {
+    const clickedInfo = originalEvent
+      .composedPath()
+      .some((el) => el.classList?.contains("info-indicator"));
     if (clickedInfo) this.#openBoxModal(box);
   }
 
-  #onBoxDblClick({
-    detail: { box, originalEvent },
-  }: CustomEvent<{ box: BoxViewModel; originalEvent: MouseEvent }>): void {
-    const clickedInfo = (originalEvent.composedPath() as HTMLElement[]).some(
-      (el) => el.classList?.contains("info-indicator"),
-    );
+  #onBoxDblClick({ detail: { box, originalEvent } }) {
+    const clickedInfo = originalEvent
+      .composedPath()
+      .some((el) => el.classList?.contains("info-indicator"));
     if (!clickedInfo) this.#state.enterSubpatch(box.id);
   }
 
-  #openBoxModal(box: BoxViewModel): void {
+  #openBoxModal(box) {
     if (box.diffState !== "modified" || !box.attrDiffs?.length) return;
     const html = renderBoxAttrDiffs(box.attrDiffs);
     if (!html) return;
@@ -291,21 +264,19 @@ class PatcherApp {
     this.#modal.style.display = "block";
   }
 
-  #closeModal(): void {
+  #closeModal() {
     this.#modal.style.display = "none";
   }
 
   // ── Zoom ────────────────────────────────────────────────────────────────────
 
-  #zoom(level: number, e?: MouseEvent): void {
+  #zoom(level, e) {
     this.#state.setZoom(level, e ? { x: e.clientX, y: e.clientY } : undefined);
   }
 
-  #applyZoom(pivot?: { x: number; y: number }): void {
-    const { wrapper: w, patcher: p } = {
-      wrapper: this.#wrapper,
-      patcher: this.#patcher,
-    };
+  #applyZoom(pivot) {
+    const w = this.#wrapper;
+    const p = this.#patcher;
     const rect = w.getBoundingClientRect();
     const px = pivot ? pivot.x - rect.left : w.clientWidth / 2;
     const py = pivot ? pivot.y - rect.top : w.clientHeight / 2;
@@ -321,10 +292,10 @@ class PatcherApp {
 
   // ── File Loading ─────────────────────────────────────────────────────────────
 
-  async #loadFile(e: Event, cb: (data: MaxPatch) => void): Promise<void> {
-    const file = (e.target as HTMLInputElement).files?.[0];
+  async #loadFile(e, cb) {
+    const file = e.target.files?.[0];
     if (!file) return;
-    cb(JSON.parse(await file.text()) as MaxPatch);
+    cb(JSON.parse(await file.text()));
   }
 }
 

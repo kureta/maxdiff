@@ -1,0 +1,20 @@
+:host {
+  padding: 0;
+}
+.bang-circle {
+  width: 80%;
+  height: 80%;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-box, #666);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+:host(.added) .bang-circle {
+  border-color: var(--accent-added, #4caf50);
+}
+:host(.removed) .bang-circle {
+  border-color: var(--accent-removed, #f44336);
+}
+:host(.modified) .bang-circle {
+  border-color: var(--accent-modified, #ff9800);
+}

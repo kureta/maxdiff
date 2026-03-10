@@ -1,0 +1,22 @@
+:host {
+  padding: 0;
+  min-width: 20px;
+  min-height: 20px;
+}
+.io-number {
+  border: none;
+  background-color: transparent;
+  font-weight: bold;
+  font-size: 8px;
+  color: var(--text-muted, #ccc);
+  line-height: 1;
+  margin: 1px 0;
+}
+.io-triangle {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid var(--io-color, #888);
+  margin: 2px 0;
+}
