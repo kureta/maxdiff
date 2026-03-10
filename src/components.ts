@@ -702,6 +702,16 @@ export class MaxPatcher extends HTMLElement {
     for (const line of this.#lines) {
       const src = this.#boxMap.get(line.source[0]);
       const dst = this.#boxMap.get(line.destination[0]);
+      if (!src || !dst) {
+        console.error(
+          `[MaxPatcher] Unresolved line endpoint:`,
+          !src
+            ? `source "${line.source[0]}"`
+            : `destination "${line.destination[0]}"`,
+          line,
+        );
+        continue;
+      }
       if (src && dst)
         this.svgLayer.appendChild(this.createConnectionPath(src, dst, line));
     }

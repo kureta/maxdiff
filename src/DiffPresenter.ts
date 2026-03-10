@@ -95,10 +95,23 @@ export class DiffPresenter {
 
     const linesA = safeA.patcher.lines?.map((l) => l.patchline) ?? [];
     const linesB = safeB.patcher.lines?.map((l) => l.patchline) ?? [];
+    const diffLines = this.processLines(linesA, linesB, idMapAtoB); // ← named variable
+
+    const boxIds = new Set(diffBoxes.map((b) => b.id));
+    for (const line of diffLines) {
+      if (!boxIds.has(line.source[0]))
+        console.error(
+          `DiffPresenter: line source "${line.source[0]}" has no corresponding box`,
+        );
+      if (!boxIds.has(line.destination[0]))
+        console.error(
+          `DiffPresenter: line destination "${line.destination[0]}" has no corresponding box`,
+        );
+    }
 
     return {
       boxes: structuredClone(diffBoxes),
-      lines: structuredClone(this.processLines(linesA, linesB, idMapAtoB)),
+      lines: structuredClone(diffLines),
     };
   }
 
