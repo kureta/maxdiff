@@ -16,6 +16,21 @@
           >New: <input accept=".maxpat" id="fileInputB" type="file"
         /></label>
       </div>
+      <div id="git-controls" hidden>
+        <button id="btn-git-prev">← Step</button>
+        <div class="git-selector">
+          <button id="btn-before-prev">←</button>
+          <select id="select-before"></select>
+          <button id="btn-before-next">→</button>
+        </div>
+        <span id="git-sep">→</span>
+        <div class="git-selector">
+          <button id="btn-after-prev">←</button>
+          <select id="select-after"></select>
+          <button id="btn-after-next">→</button>
+        </div>
+        <button id="btn-git-next">Step →</button>
+      </div>
       <div id="view-toggles" style="display: none;">
         <label><input name="view" type="radio" value="before" /> Before</label>
         <label><input name="view" type="radio" value="after" /> After</label>

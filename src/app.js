@@ -83,9 +83,22 @@ function el(id) {
 class PatcherApp {
   #state = new StateManager();
 
+  #commits = [];
+  #beforeIdx = 0;
+  #afterIdx = 1;
+
   #patcher = el("patcher");
   #wrapper = el("patcher-wrapper");
   #fileInputs = el("file-inputs");
+  #gitControls = el("git-controls");
+  #selectBefore = el("select-before");
+  #selectAfter = el("select-after");
+  #btnGitPrev = el("btn-git-prev");
+  #btnGitNext = el("btn-git-next");
+  #btnBeforePrev = el("btn-before-prev");
+  #btnBeforeNext = el("btn-before-next");
+  #btnAfterPrev = el("btn-after-prev");
+  #btnAfterNext = el("btn-after-next");
   #viewToggles = el("view-toggles");
   #presToggle = el("presentation-toggle");
   #showRemToggle = el("show-removed-toggle");
@@ -120,6 +133,19 @@ class PatcherApp {
   // ── Initialisation ──────────────────────────────────────────────────────────
 
   async #loadInitialData() {
+    // 1. Try git history mode
+    try {
+      const res = await fetch("/commits");
+      if (res.ok) {
+        const commits = await res.json();
+        if (commits.length >= 2) {
+          this.#enterGitMode(commits);
+          return;
+        }
+      }
+    } catch {}
+
+    // 2. Try static diff-data
     try {
       const res = await fetch("/diff-data");
       if (!res.ok) return;
@@ -133,6 +159,77 @@ class PatcherApp {
     } catch {
       console.info("Local server not available; using file inputs.");
     }
+  }
+
+  // ── Git Mode ─────────────────────────────────────────────────────────────────
+
+  #enterGitMode(commits) {
+    this.#commits = commits;
+    this.#beforeIdx = commits.length - 2;
+    this.#afterIdx = commits.length - 1;
+    this.#fileInputs.hidden = true;
+    this.#gitControls.hidden = false;
+    this.#populateCommitSelects();
+    this.#fetchGitDiff();
+  }
+
+  #populateCommitSelects() {
+    const options = this.#commits
+      .map(
+        (c, i) => `<option value="${i}">[${c.short_sha}] ${c.message}</option>`,
+      )
+      .join("");
+    this.#selectBefore.innerHTML = options;
+    this.#selectAfter.innerHTML = options;
+  }
+
+  #syncGitUI() {
+    this.#selectBefore.value = this.#beforeIdx;
+    this.#selectAfter.value = this.#afterIdx;
+    this.#btnGitPrev.disabled = this.#beforeIdx <= 0;
+    this.#btnGitNext.disabled = this.#afterIdx >= this.#commits.length - 1;
+    this.#btnBeforePrev.disabled = this.#beforeIdx <= 0;
+    this.#btnBeforeNext.disabled = this.#beforeIdx >= this.#afterIdx - 1;
+    this.#btnAfterPrev.disabled = this.#afterIdx <= this.#beforeIdx + 1;
+    this.#btnAfterNext.disabled = this.#afterIdx >= this.#commits.length - 1;
+  }
+
+  #stepBoth(delta) {
+    const nb = this.#beforeIdx + delta,
+      na = this.#afterIdx + delta;
+    if (nb < 0 || na >= this.#commits.length) return;
+    this.#beforeIdx = nb;
+    this.#afterIdx = na;
+    this.#syncGitUI();
+    this.#fetchGitDiff();
+  }
+
+  #stepBefore(delta) {
+    const n = this.#beforeIdx + delta;
+    if (n < 0 || n >= this.#afterIdx) return;
+    this.#beforeIdx = n;
+    this.#syncGitUI();
+    this.#fetchGitDiff();
+  }
+
+  #stepAfter(delta) {
+    const n = this.#afterIdx + delta;
+    if (n <= this.#beforeIdx || n >= this.#commits.length) return;
+    this.#afterIdx = n;
+    this.#syncGitUI();
+    this.#fetchGitDiff();
+  }
+
+  async #fetchGitDiff() {
+    const before = this.#commits[this.#beforeIdx].sha;
+    const after = this.#commits[this.#afterIdx].sha;
+    const res = await fetch(`/diff-data?before=${before}&after=${after}`);
+    const data = await res.json();
+    if (data.filename) {
+      document.title = `Diff: ${data.filename}`;
+      this.#filenameDisplay.textContent = data.filename;
+    }
+    this.#state.setInitialData(data.old, data.new);
   }
 
   // ── Event Wiring ────────────────────────────────────────────────────────────
@@ -154,6 +251,30 @@ class PatcherApp {
       this.#loadFile(e, (data) => this.#state.setFileA(data));
     this.#fileInputB.onchange = (e) =>
       this.#loadFile(e, (data) => this.#state.setFileB(data));
+
+    // Git navigation
+    this.#btnGitPrev.onclick = () => this.#stepBoth(-1);
+    this.#btnGitNext.onclick = () => this.#stepBoth(1);
+    this.#btnBeforePrev.onclick = () => this.#stepBefore(-1);
+    this.#btnBeforeNext.onclick = () => this.#stepBefore(1);
+    this.#btnAfterPrev.onclick = () => this.#stepAfter(-1);
+    this.#btnAfterNext.onclick = () => this.#stepAfter(1);
+    this.#selectBefore.onchange = () => {
+      const n = parseInt(this.#selectBefore.value, 10);
+      this.#beforeIdx = n;
+      if (this.#afterIdx <= this.#beforeIdx)
+        this.#afterIdx = this.#beforeIdx + 1;
+      this.#syncGitUI();
+      this.#fetchGitDiff();
+    };
+    this.#selectAfter.onchange = () => {
+      const n = parseInt(this.#selectAfter.value, 10);
+      this.#afterIdx = n;
+      if (this.#beforeIdx >= this.#afterIdx)
+        this.#beforeIdx = this.#afterIdx - 1;
+      this.#syncGitUI();
+      this.#fetchGitDiff();
+    };
 
     // Buttons
     this.#btnReset.onclick = () => {
