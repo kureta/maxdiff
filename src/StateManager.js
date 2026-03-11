@@ -149,8 +149,8 @@ export class StateManager extends EventTarget {
 
   #pushSubpatch(pA, pB) {
     this.#navStack.push({ patchA: this.#patchA, patchB: this.#patchB });
-    this.#patchA = pA ? { patcher: pA } : null;
-    this.#patchB = pB ? { patcher: pB } : null;
+    this.#patchA = safe(pA ? { patcher: pA } : null);
+    this.#patchB = safe(pB ? { patcher: pB } : null);
     this.#recalculate("navigation");
   }
 
