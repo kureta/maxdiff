@@ -90,7 +90,8 @@ class PatcherApp {
   #patcher = el("patcher");
   #wrapper = el("patcher-wrapper");
   #fileInputs = el("file-inputs");
-  #gitControls = el("git-controls");
+  #gitControls = el("btn-git-history");
+  #gitPanel = el("git-panel");
   #selectBefore = el("select-before");
   #selectAfter = el("select-after");
   #btnGitPrev = el("btn-git-prev");
@@ -105,6 +106,8 @@ class PatcherApp {
   #showRemCont = el("show-removed-container");
   #btnReset = el("btn-reset-layout");
   #btnMeta = el("btn-metadata");
+  #btnBack = el("btn-back");
+  #filenameDisplay = el("filename-display");
   #modal = el("details-modal");
   #modalContent = el("diff-content");
   #sidebar = el("metadata-sidebar");
@@ -115,17 +118,7 @@ class PatcherApp {
   #fileInputA = el("fileInputA");
   #fileInputB = el("fileInputB");
 
-  #btnBack = Object.assign(document.createElement("button"), {
-    textContent: "Back to Parent",
-    hidden: true,
-  });
-  #filenameDisplay = Object.assign(document.createElement("span"), {
-    id: "filename-display",
-  });
-
   constructor() {
-    el("controls").prepend(this.#filenameDisplay);
-    el("controls").appendChild(this.#btnBack);
     this.#wireEvents();
     this.#loadInitialData();
   }
@@ -169,7 +162,10 @@ class PatcherApp {
     this.#afterIdx = commits.length - 1;
     this.#fileInputs.hidden = true;
     this.#gitControls.hidden = false;
+    this.#gitPanel.classList.add("open");
+    this.#gitControls.classList.add("active");
     this.#populateCommitSelects();
+    this.#syncGitUI();
     this.#fetchGitDiff();
   }
 
@@ -252,6 +248,16 @@ class PatcherApp {
     this.#fileInputB.onchange = (e) =>
       this.#loadFile(e, (data) => this.#state.setFileB(data));
 
+    // Git panel toggle
+    this.#gitControls.onclick = () => {
+      this.#gitPanel.classList.toggle("open");
+      this.#gitControls.classList.toggle("active", this.#gitPanel.classList.contains("open"));
+    };
+    el("btn-close-git").onclick = () => {
+      this.#gitPanel.classList.remove("open");
+      this.#gitControls.classList.remove("active");
+    };
+
     // Git navigation
     this.#btnGitPrev.onclick = () => this.#stepBoth(-1);
     this.#btnGitNext.onclick = () => this.#stepBoth(1);
@@ -324,8 +330,8 @@ class PatcherApp {
     switch (type) {
       case "data":
       case "navigation":
-        this.#viewToggles.style.display = "block";
-        this.#btnMeta.style.display = "inline-block";
+        this.#viewToggles.hidden = false;
+        this.#btnMeta.hidden = false;
         this.#btnBack.hidden = !this.#state.hasParent;
         this.#syncView();
         break;

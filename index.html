@@ -3,61 +3,78 @@
   <head>
     <meta charset="UTF-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <title>Maxpat Renderer</title>
+    <title>Maxpat Diff</title>
     <link href="style.css" rel="stylesheet" />
   </head>
   <body>
-    <div id="controls">
-      <div id="file-inputs">
-        <label
-          >Old: <input accept=".maxpat" id="fileInputA" type="file"
-        /></label>
-        <label
-          >New: <input accept=".maxpat" id="fileInputB" type="file"
-        /></label>
-      </div>
-      <div id="git-controls" hidden>
-        <button id="btn-git-prev">← Step</button>
-        <div class="git-selector">
-          <button id="btn-before-prev">←</button>
-          <select id="select-before"></select>
-          <button id="btn-before-next">→</button>
+    <div id="toolbar">
+      <div class="tb-left">
+        <button id="btn-back" hidden>‹ Back</button>
+        <div id="file-inputs">
+          <label>Old <input accept=".maxpat,.amxd" id="fileInputA" type="file" /></label>
+          <label>New <input accept=".maxpat,.amxd" id="fileInputB" type="file" /></label>
         </div>
-        <span id="git-sep">→</span>
-        <div class="git-selector">
-          <button id="btn-after-prev">←</button>
-          <select id="select-after"></select>
-          <button id="btn-after-next">→</button>
+        <span id="filename-display"></span>
+      </div>
+
+      <div class="tb-center">
+        <div id="view-toggles" hidden>
+          <label><input name="view" type="radio" value="before" />Before</label>
+          <label><input name="view" type="radio" value="after" />After</label>
+          <label><input checked name="view" type="radio" value="diff" />Diff</label>
         </div>
-        <button id="btn-git-next">Step →</button>
       </div>
-      <div id="view-toggles" style="display: none;">
-        <label><input name="view" type="radio" value="before" /> Before</label>
-        <label><input name="view" type="radio" value="after" /> After</label>
-        <label
-          ><input checked name="view" type="radio" value="diff" /> Diff</label
-        >
+
+      <div class="tb-right">
+        <label class="tb-toggle">
+          <input id="presentation-toggle" type="checkbox" />
+          <span>Present</span>
+        </label>
+        <label class="tb-toggle" id="show-removed-container" hidden>
+          <input id="show-removed-toggle" type="checkbox" />
+          <span>Show removed</span>
+        </label>
+        <div class="tb-sep"></div>
+        <div id="zoom-controls">
+          <button id="btn-zoom-out">−</button>
+          <button id="btn-zoom-reset">100%</button>
+          <button id="btn-zoom-in">+</button>
+        </div>
+        <div class="tb-sep"></div>
+        <button id="btn-reset-layout">↺ Reset</button>
+        <button id="btn-metadata" hidden>Metadata</button>
+        <button id="btn-git-history" hidden>History</button>
       </div>
-      <div class="toggle-group">
-        <input id="presentation-toggle" type="checkbox" />
-        <label for="presentation-toggle">Presentation View</label>
-      </div>
-      <div id="show-removed-container" class="toggle-group" hidden>
-        <input id="show-removed-toggle" type="checkbox" />
-        <label for="show-removed-toggle">Show removed</label>
-      </div>
-      <div id="zoom-controls">
-        <button id="btn-zoom-out">-</button>
-        <button id="btn-zoom-reset">100%</button>
-        <button id="btn-zoom-in">+</button>
-      </div>
-      <button id="btn-reset-layout">Reset Layout</button>
-      <button id="btn-metadata" style="display: none;">Metadata</button>
     </div>
 
     <div id="viewport">
       <div id="patcher-wrapper">
         <max-patcher id="patcher"></max-patcher>
+      </div>
+    </div>
+
+    <div id="git-panel">
+      <div class="panel-header">
+        <span>Git History</span>
+        <button id="btn-close-git">×</button>
+      </div>
+      <div class="panel-body">
+        <div class="commit-row">
+          <span class="commit-label">Before</span>
+          <button id="btn-before-prev">‹</button>
+          <select id="select-before"></select>
+          <button id="btn-before-next">›</button>
+        </div>
+        <div class="step-row">
+          <button id="btn-git-prev">‹‹ Step</button>
+          <button id="btn-git-next">Step ››</button>
+        </div>
+        <div class="commit-row">
+          <span class="commit-label">After</span>
+          <button id="btn-after-prev">‹</button>
+          <select id="select-after"></select>
+          <button id="btn-after-next">›</button>
+        </div>
       </div>
     </div>
 
@@ -77,7 +94,6 @@
       <div id="metadata-content"></div>
     </div>
 
-    <script src="src/app.js" type="module">
-</script>
+    <script src="src/app.js" type="module"></script>
   </body>
 </html>
