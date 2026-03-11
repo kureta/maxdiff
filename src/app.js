@@ -3,13 +3,15 @@ import { StateManager } from "./StateManager.js";
 
 // ─── HTML Formatting (pure functions) ────────────────────────────────────────
 
+function diffLabel(key, oldV, newV) {
+  return oldV === undefined
+    ? `Added: ${key}`
+    : newV === undefined
+      ? `Removed: ${key}`
+      : key;
+}
+
 function renderAttrChange(key, oldV, newV) {
-  const label =
-    oldV === undefined
-      ? `Added: ${key}`
-      : newV === undefined
-        ? `Removed: ${key}`
-        : key;
   const oldHtml =
     oldV !== undefined
       ? `<span class="attr-old">${JSON.stringify(oldV)}</span>`
@@ -19,18 +21,12 @@ function renderAttrChange(key, oldV, newV) {
       ? `<span class="attr-new">${JSON.stringify(newV)}</span>`
       : "";
   return `<div class="attr-change">
-  <div class="attr-name">${label}</div>
+  <div class="attr-name">${diffLabel(key, oldV, newV)}</div>
   ${oldHtml}${newHtml}
 </div>`;
 }
 
 function renderMetadataEntry(key, oldV, newV) {
-  const label =
-    oldV === undefined
-      ? `Added: ${key}`
-      : newV === undefined
-        ? `Removed: ${key}`
-        : key;
   const oldHtml =
     oldV !== undefined
       ? `<pre class="meta-old">${JSON.stringify(oldV, null, 2)}</pre>`
@@ -40,7 +36,7 @@ function renderMetadataEntry(key, oldV, newV) {
       ? `<pre class="meta-new">${JSON.stringify(newV, null, 2)}</pre>`
       : "";
   return `<div class="meta-change">
-  <div class="meta-key">${label}</div>
+  <div class="meta-key">${diffLabel(key, oldV, newV)}</div>
   ${oldHtml}${newHtml}
 </div>`;
 }

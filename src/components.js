@@ -27,27 +27,22 @@ function ioPoints(count, className, stateClass = "") {
   }).join("");
 }
 
+function renderPorts(box, countKey, cssClass) {
+  const diff =
+    box.diffState === "modified"
+      ? box.attrDiffs?.find((d) => d.key === countKey)
+      : undefined;
+  return diff
+    ? ioPoints(diff.old ?? 1, cssClass, "removed") +
+        ioPoints(diff.new ?? 1, cssClass, "added")
+    : ioPoints(box[countKey] ?? 1, cssClass);
+}
+
 function renderIoPorts(box) {
-  const inletDiff =
-    box.diffState === "modified"
-      ? box.attrDiffs?.find((d) => d.key === "numinlets")
-      : undefined;
-  const outletDiff =
-    box.diffState === "modified"
-      ? box.attrDiffs?.find((d) => d.key === "numoutlets")
-      : undefined;
-
-  const inlets = inletDiff
-    ? ioPoints(inletDiff.old ?? 1, "inlet-point", "removed") +
-      ioPoints(inletDiff.new ?? 1, "inlet-point", "added")
-    : ioPoints(box.numinlets ?? 1, "inlet-point");
-
-  const outlets = outletDiff
-    ? ioPoints(outletDiff.old ?? 1, "outlet-point", "removed") +
-      ioPoints(outletDiff.new ?? 1, "outlet-point", "added")
-    : ioPoints(box.numoutlets ?? 1, "outlet-point");
-
-  return inlets + outlets;
+  return (
+    renderPorts(box, "numinlets", "inlet-point") +
+    renderPorts(box, "numoutlets", "outlet-point")
+  );
 }
 
 function resolveDisplayName(box) {
@@ -90,11 +85,11 @@ function renderInfoIndicator(box) {
 function renderPresentationIndicator(box) {
   const diff = box.attrDiffs?.find((d) => d.key === "presentation");
   if (!diff) return "";
-  return diff.new === 1
-    ? `<div class="presentation-indicator added" title="Added to presentation">🐵</div>`
-    : `<div class="presentation-indicator removed" title="Removed from presentation">
-  🙈
-</div>`;
+  const [cls, title, emoji] =
+    diff.new === 1
+      ? ["added", "Added to presentation", "🐵"]
+      : ["removed", "Removed from presentation", "🙈"];
+  return `<div class="presentation-indicator ${cls}" title="${title}">${emoji}</div>`;
 }
 
 // ─── SVG Path ─────────────────────────────────────────────────────────────────
@@ -134,13 +129,13 @@ export class MaxBox extends HTMLElement {
     return this.#box;
   }
 
-  /** Subclasses override to supply custom inner HTML. */
-  innerHtml() {
+  /** Subclasses override to supply custom inner HTML. Receives the box data as argument. */
+  buildHtml(box) {
     return (
-      renderBoxContent(this.#box) +
-      renderIoPorts(this.#box) +
-      renderInfoIndicator(this.#box) +
-      renderPresentationIndicator(this.#box)
+      renderBoxContent(box) +
+      renderIoPorts(box) +
+      renderInfoIndicator(box) +
+      renderPresentationIndicator(box)
     );
   }
 
@@ -168,13 +163,11 @@ export class MaxBox extends HTMLElement {
     } = this.#box;
     const hasSubpatch = diffState ? (patcherA ?? patcherB) : patcher;
 
-    this.className = `max-box ${maxclass} ${diffState}`;
-    if (hasSubpatch) {
-      this.style.borderStyle = "double";
-      this.style.borderWidth = "3px";
-    }
+    this.className = ["max-box", maxclass, diffState].filter(Boolean).join(" ");
+    this.style.borderStyle = hasSubpatch ? "double" : "";
+    this.style.borderWidth = hasSubpatch ? "3px" : "";
 
-    this.shadowRoot.innerHTML = this.innerHtml();
+    this.shadowRoot.innerHTML = this.buildHtml(this.#box);
   }
 }
 
@@ -196,7 +189,7 @@ export class MaxButton extends MaxBox {
   constructor() {
     super([BUTTON_STYLE]);
   }
-  innerHtml() {
+  buildHtml() {
     return `<div class="bang-circle"></div>`;
   }
 }
@@ -205,25 +198,34 @@ export class MaxToggle extends MaxBox {
   constructor() {
     super([BUTTON_STYLE]);
   }
-  innerHtml() {
+  buildHtml() {
     return `<div class="box-content">X</div>`;
   }
 }
 
-export class MaxIO extends MaxBox {
-  constructor() {
+class MaxIO extends MaxBox {
+  #inlet;
+  constructor(inlet) {
     super([IO_STYLE]);
+    this.#inlet = inlet;
   }
-  innerHtml() {
-    const b = this.data;
-    const num = `<div class="io-number">${b.index ?? 1}</div>`;
+  buildHtml(box) {
+    const num = `<div class="io-number">${box.index ?? 1}</div>`;
     const tri = `<div class="io-triangle"></div>`;
-    return `<div class="box-content">${b.maxclass === "inlet" ? num + tri : tri + num}</div>`;
+    return `<div class="box-content">${this.#inlet ? num + tri : tri + num}</div>`;
   }
 }
 
-export class MaxInlet extends MaxIO {}
-export class MaxOutlet extends MaxIO {}
+export class MaxInlet extends MaxIO {
+  constructor() {
+    super(true);
+  }
+}
+export class MaxOutlet extends MaxIO {
+  constructor() {
+    super(false);
+  }
+}
 
 export class MaxPanel extends MaxBox {
   constructor() {

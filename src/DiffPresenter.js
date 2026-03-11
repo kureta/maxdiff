@@ -11,16 +11,6 @@ const HIDDEN_ATTR_KEYS = new Set([
 /** Patch-level keys excluded from metadata comparison. */
 const HIDDEN_META_KEYS = new Set(["boxes", "lines", "rect"]);
 
-// ─── Empty Patch Fallback ─────────────────────────────────────────────────────
-
-const EMPTY_PATCH = {
-  patcher: { boxes: [], lines: [], rect: [0, 0, 0, 0] },
-};
-
-function safe(patch) {
-  return patch?.patcher ? patch : EMPTY_PATCH;
-}
-
 // ─── Box View Model Helpers ───────────────────────────────────────────────────
 
 function attrDiffsFor(box) {
@@ -67,38 +57,25 @@ function annotatedBoxToViewModel(box) {
           oldText: diff.previous.text ?? diff.previous.maxclass,
         }),
       };
+    default:
+      throw new Error(`Unknown diff type: ${diff.type}`);
   }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export class DiffPresenter {
-  /** Render a plain (non-diff) patch with no change annotations. Used for before/after views. */
-  static render(patch) {
-    const p = safe(patch);
-    const boxes = p.patcher.boxes.map((b) => ({ ...b.box }));
-    const lines = (p.patcher.lines ?? []).map((l) => ({
-      source: l.patchline.source,
-      destination: l.patchline.destination,
-    }));
-    return { boxes: structuredClone(boxes), lines: structuredClone(lines) };
-  }
-
   /** Render an annotated diff patch. */
-  static renderDiff(annotated) {
+  static render(annotated) {
     const boxes = annotated.patcher.boxes.map((b) =>
       annotatedBoxToViewModel(b.box),
     );
     const lines = annotated.patcher.lines.map((l) => ({
       source: l.patchline.source,
       destination: l.patchline.destination,
-      diffState: l.patchline._diff
-        ? l.patchline._diff.type === "removed"
-          ? "removed"
-          : "added"
-        : "unchanged",
+      diffState: l.patchline._diff?.type ?? "unchanged",
     }));
-    return { boxes: structuredClone(boxes), lines: structuredClone(lines) };
+    return structuredClone({ boxes, lines });
   }
 
   /** Extract patch-level metadata (everything except boxes, lines, rect). */
@@ -114,7 +91,6 @@ export class DiffPresenter {
     const metaA = this.metadata(patchA);
     const metaB = this.metadata(patchB);
     const keys = new Set([...Object.keys(metaA), ...Object.keys(metaB)]);
-
     return [...keys]
       .filter((k) => JSON.stringify(metaA[k]) !== JSON.stringify(metaB[k]))
       .map((k) => ({ key: k, old: metaA[k], new: metaB[k] }));

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { MaxDiff, boxClass } from "../src/DiffEngine.js";
+import { annotate, boxClass } from "../src/DiffEngine.js";
 import { DiffPresenter } from "../src/DiffPresenter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,7 +53,7 @@ function assertNoOrphanLines(result) {
 
 // Convenience wrapper: makePatch returns loosely-typed objects for test ergonomics.
 function process(a, b) {
-  return DiffPresenter.renderDiff(MaxDiff.annotate(a, b));
+  return DiffPresenter.render(annotate(a, b));
 }
 
 // ─── boxClass ─────────────────────────────────────────────────────────────────
@@ -98,11 +98,11 @@ test("boxClass: returns empty string for newobj with no text", () => {
   );
 });
 
-// ─── MaxDiff.annotate — box classification ────────────────────────────────────
+// ─── annotate — box classification ────────────────────────────────────
 
 test("Identical patches → no _diff annotations", () => {
   const p = makePatch([box("obj-1", "cycle~")]);
-  assert.ok(MaxDiff.annotate(p, p).patcher.boxes.every((b) => !b.box._diff));
+  assert.ok(annotate(p, p).patcher.boxes.every((b) => !b.box._diff));
 });
 
 test("Identical patches → Presenter marks all boxes unchanged", () => {
@@ -115,7 +115,7 @@ test("Identical patches → Presenter marks all boxes unchanged", () => {
 test("Added box → annotated as 'added'", () => {
   const a = makePatch([]);
   const b = makePatch([box("obj-1", "cycle~")]);
-  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  const boxes = annotate(a, b).patcher.boxes;
   assert.equal(boxes.length, 1);
   assert.equal(boxes[0].box._diff?.type, "added");
 });
@@ -123,7 +123,7 @@ test("Added box → annotated as 'added'", () => {
 test("Deleted box → annotated as 'deleted'", () => {
   const a = makePatch([box("obj-1", "cycle~")]);
   const b = makePatch([]);
-  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  const boxes = annotate(a, b).patcher.boxes;
   assert.equal(boxes.length, 1);
   assert.equal(boxes[0].box._diff?.type, "deleted");
 });
@@ -131,7 +131,7 @@ test("Deleted box → annotated as 'deleted'", () => {
 test("Attribute change → 'modified' with correct field delta", () => {
   const a = makePatch([box("obj-1", "cycle~", { some_param: 0 })]);
   const b = makePatch([box("obj-1", "cycle~", { some_param: 1 })]);
-  const annotatedBox = MaxDiff.annotate(a, b).patcher.boxes[0].box;
+  const annotatedBox = annotate(a, b).patcher.boxes[0].box;
   assert.equal(annotatedBox._diff?.type, "modified");
   assert.deepEqual(annotatedBox._diff?.fields?.["some_param"], {
     from: 0,
@@ -146,10 +146,7 @@ test("Only patching_rect change → 'moved', not 'modified'", () => {
   const b = makePatch([
     box("obj-1", "cycle~", { patching_rect: [200, 300, 60, 22] }),
   ]);
-  assert.equal(
-    MaxDiff.annotate(a, b).patcher.boxes[0].box._diff?.type,
-    "moved",
-  );
+  assert.equal(annotate(a, b).patcher.boxes[0].box._diff?.type, "moved");
 });
 
 test("Only presentation_rect change → 'moved', not 'modified'", () => {
@@ -165,10 +162,7 @@ test("Only presentation_rect change → 'moved', not 'modified'", () => {
       presentation_rect: [50, 50, 60, 22],
     }),
   ]);
-  assert.equal(
-    MaxDiff.annotate(a, b).patcher.boxes[0].box._diff?.type,
-    "moved",
-  );
+  assert.equal(annotate(a, b).patcher.boxes[0].box._diff?.type, "moved");
 });
 
 test("patching_rect + attribute change → 'modified', not 'moved'", () => {
@@ -178,10 +172,7 @@ test("patching_rect + attribute change → 'modified', not 'moved'", () => {
   const b = makePatch([
     box("obj-1", "cycle~", { patching_rect: [100, 100, 60, 22], foo: "b" }),
   ]);
-  assert.equal(
-    MaxDiff.annotate(a, b).patcher.boxes[0].box._diff?.type,
-    "modified",
-  );
+  assert.equal(annotate(a, b).patcher.boxes[0].box._diff?.type, "modified");
 });
 
 // ─── Matching Passes ──────────────────────────────────────────────────────────
@@ -189,13 +180,13 @@ test("patching_rect + attribute change → 'modified', not 'moved'", () => {
 test("Pass 1: same-ID same-class stays matched; unique-class neighbour matched via Pass 1.5", () => {
   const a = makePatch([box("obj-1", "cycle~"), box("obj-2", "dac~")]);
   const b = makePatch([box("obj-1", "cycle~"), box("obj-99", "dac~")]);
-  assert.ok(MaxDiff.annotate(a, b).patcher.boxes.every((b) => !b.box._diff));
+  assert.ok(annotate(a, b).patcher.boxes.every((b) => !b.box._diff));
 });
 
 test("Pass 1: same ID but different class → treated as delete + add", () => {
   const a = makePatch([box("obj-1", "cycle~")]);
   const b = makePatch([{ ...box("obj-1", "dac~"), maxclass: "newobj" }]);
-  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  const boxes = annotate(a, b).patcher.boxes;
   assert.ok(boxes.some((b) => b.box._diff?.type === "deleted"));
   assert.ok(boxes.some((b) => b.box._diff?.type === "added"));
 });
@@ -209,7 +200,7 @@ test("Pass 1.5: unique-class box matched across different IDs → no delete/add"
     { ...box("obj-4", "live.gain~"), maxclass: "live.gain~" },
     box("obj-2", "dac~"),
   ]);
-  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  const boxes = annotate(a, b).patcher.boxes;
   assert.ok(!boxes.some((b) => b.box._diff?.type === "deleted"));
   assert.ok(!boxes.some((b) => b.box._diff?.type === "added"));
 });
@@ -217,9 +208,46 @@ test("Pass 1.5: unique-class box matched across different IDs → no delete/add"
 test("Pass 1.5: ambiguous class (two of same) → no unique-class match", () => {
   const a = makePatch([box("obj-1", "cycle~"), box("obj-2", "cycle~")]);
   const b = makePatch([box("obj-3", "cycle~"), box("obj-4", "cycle~")]);
-  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  const boxes = annotate(a, b).patcher.boxes;
   assert.equal(boxes.filter((b) => b.box._diff?.type === "deleted").length, 2);
   assert.equal(boxes.filter((b) => b.box._diff?.type === "added").length, 2);
+});
+
+test("Pass 2: topology match works when the shared anchor was itself matched via Pass 1.5 (different IDs)", () => {
+  // obj-anchor~ appears once on each side but with different IDs → matched by Pass 1.5.
+  // The two "scale" boxes on each side have no unique class but connect to that anchor
+  // with distinct outlet indices → must be matched by Pass 2 using canonical (A-side) IDs.
+  const a = makePatch(
+    [
+      { ...box("obj-1", "unique-anchor~"), maxclass: "unique-anchor~" },
+      box("obj-2", "scale"),
+      box("obj-3", "scale"),
+    ],
+    [
+      { src: ["obj-1", 0], dst: ["obj-2", 0] },
+      { src: ["obj-1", 1], dst: ["obj-3", 0] },
+    ],
+  );
+  const b = makePatch(
+    [
+      { ...box("obj-99", "unique-anchor~"), maxclass: "unique-anchor~" },
+      box("obj-4", "scale"),
+      box("obj-5", "scale"),
+    ],
+    [
+      { src: ["obj-99", 0], dst: ["obj-4", 0] },
+      { src: ["obj-99", 1], dst: ["obj-5", 0] },
+    ],
+  );
+  const boxes = annotate(a, b).patcher.boxes;
+  assert.ok(
+    !boxes.some((b) => b.box._diff?.type === "deleted"),
+    "no deleted boxes",
+  );
+  assert.ok(
+    !boxes.some((b) => b.box._diff?.type === "added"),
+    "no added boxes",
+  );
 });
 
 test("Pass 2: topological match via shared anchored neighbour", () => {
@@ -231,7 +259,7 @@ test("Pass 2: topological match via shared anchored neighbour", () => {
     [box("obj-1", "dac~"), box("obj-B", "gain~")],
     [{ src: ["obj-B", 0], dst: ["obj-1", 0] }],
   );
-  const boxes = MaxDiff.annotate(a, b).patcher.boxes;
+  const boxes = annotate(a, b).patcher.boxes;
   assert.ok(!boxes.some((b) => b.box._diff?.type === "deleted"));
   assert.ok(!boxes.some((b) => b.box._diff?.type === "added"));
 });
@@ -246,7 +274,7 @@ test("Box added to presentation view → 'modified' with presentation field", ()
       presentation_rect: [50, 50, 60, 22],
     }),
   ]);
-  const annotatedBox = MaxDiff.annotate(a, b).patcher.boxes[0].box;
+  const annotatedBox = annotate(a, b).patcher.boxes[0].box;
   assert.equal(annotatedBox._diff?.type, "modified");
   assert.ok(
     annotatedBox._diff?.fields && "presentation" in annotatedBox._diff.fields,
