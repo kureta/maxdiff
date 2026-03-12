@@ -162,8 +162,8 @@ class PatcherApp {
     this.#afterIdx = commits.length - 1;
     this.#fileInputs.hidden = true;
     this.#gitControls.hidden = false;
-    this.#gitPanel.classList.add("open");
-    this.#gitControls.classList.add("active");
+    // this.#gitPanel.classList.add("open");
+    // this.#gitControls.classList.add("active");
     this.#populateCommitSelects();
     this.#syncGitUI();
     this.#fetchGitDiff();
@@ -251,7 +251,10 @@ class PatcherApp {
     // Git panel toggle
     this.#gitControls.onclick = () => {
       this.#gitPanel.classList.toggle("open");
-      this.#gitControls.classList.toggle("active", this.#gitPanel.classList.contains("open"));
+      this.#gitControls.classList.toggle(
+        "active",
+        this.#gitPanel.classList.contains("open"),
+      );
     };
     el("btn-close-git").onclick = () => {
       this.#gitPanel.classList.remove("open");
